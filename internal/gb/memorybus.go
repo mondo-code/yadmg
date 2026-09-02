@@ -130,10 +130,6 @@ func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 		case addr == DIVAddress:
 			// any write to this resets div to $00, and it's reset when STOP is executed 
 			mb.memory[DIVAddress] = 0 
-		// case addr == TIMAAddress:
-		// 	mb.gb.Timer.counter = val
-		// case addr == TMAAddress:
-		// 	mb.gb.Timer.modulo = val
 		case addr == TACAddress:
 			// reset timer cycle counter on frequency change
 			oldFreq := mb.gb.GetTimerFreq()
