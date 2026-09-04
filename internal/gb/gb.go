@@ -93,7 +93,7 @@ func (gb *Gameboy) StepDivider(cycles uint16) {
 
 func (gb *Gameboy) IsTimerEnabled() bool {
 	tac := gb.MemoryBus.ReadAddress(TACAddress)
-	return bitEnabled(&tac, 2)
+	return bitEnabled(tac, 2)
 }
 
 func (gb *Gameboy) GetTimerFreq() uint16 {

@@ -17,23 +17,23 @@ const (
 )
 
 func (mb *MemoryBus) VBlankInterruptEnabled() bool {
-	return bitEnabled(&mb.IE, 0)
+	return bitEnabled(mb.IE, 0)
 }
 
 func (mb *MemoryBus) LCDStatInterruptEnabled() bool {
-	return bitEnabled(&mb.IE, 1)
+	return bitEnabled(mb.IE, 1)
 }
 
 func (mb *MemoryBus) TimerInterruptEnabled() bool {
-	return bitEnabled(&mb.IE, 2)
+	return bitEnabled(mb.IE, 2)
 }
 
 func (mb *MemoryBus) SerialInterruptEnabled() bool {
-	return bitEnabled(&mb.IE, 3)
+	return bitEnabled(mb.IE, 3)
 }
 
 func (mb *MemoryBus) JoypadInterruptEnabled() bool {
-	return bitEnabled(&mb.IE, 4)
+	return bitEnabled(mb.IE, 4)
 }
 
 func (mb *MemoryBus) SetVBlank() {
