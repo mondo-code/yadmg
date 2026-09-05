@@ -21,7 +21,7 @@ func InitGameboy(romPath string) (*Gameboy, error) {
 	gb.PPU = ppu
 	_, err := mb.LoadCartridge(romPath)
 	if err != nil {
-		return gb, err
+		return nil, err
 	}
 
 	return gb, nil
