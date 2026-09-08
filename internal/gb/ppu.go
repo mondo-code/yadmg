@@ -47,6 +47,11 @@ func (r *InterruptRequest) add(other InterruptRequest) {
 	}
 }
 
+type Screen interface {
+	Render(framebuffer *[160][144][3]uint8)
+	IsRunning() bool
+}
+
 type PPUMode int 
 const (
 	HBlank PPUMode = iota	
@@ -135,7 +140,6 @@ func (ppu *PPU) Step(cycles uint16) InterruptRequest {
 					request.add(LCDStatRequest)
 				}
 				ppu.mode = HBlank
-				// TODO: render scan line once rendering is implemented
 			}
 	}
 	return request
@@ -192,3 +196,6 @@ func (ppu *PPU) WriteVRAM(addr uint16, val byte) {
 		ppu.tileSet[tileIndex][rowIndex][pixelIndex] = value
 	}
 }
+
+// TODO: implement
+func (ppu *PPU) WriteOAM(addr uint16, val byte) {}

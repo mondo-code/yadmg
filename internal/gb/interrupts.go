@@ -37,23 +37,23 @@ func (mb *MemoryBus) JoypadInterruptEnabled() bool {
 }
 
 func (mb *MemoryBus) SetVBlank() {
-	mb.IF |= 1
+	SetBit(&mb.IF, 0)
 }
 
 func (mb *MemoryBus) SetLCD() {
-	mb.IF |= (1 << 1)
+	SetBit(&mb.IF, 1)
 }
 
 func (mb *MemoryBus) SetTimer() {
-	mb.IF |= (1 << 2)
+	SetBit(&mb.IF, 2)
 }
 
 func (mb *MemoryBus) SetSerial() {
-	mb.IF |= (1 << 3)
+	SetBit(&mb.IF, 3)
 }
 
 func (mb *MemoryBus) SetJoypad() {
-	mb.IF |= (1 << 4)
+	SetBit(&mb.IF, 4)
 }
 
 func (cpu *CPU) jumpToISRAddress(addr uint16) {

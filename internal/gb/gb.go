@@ -1,24 +1,33 @@
 package gb
 
+const (
+	DivFreq = 0xff
+	FramebufferWidth = 160
+	FramebufferHeight = 144
+)
+
 type Gameboy struct {
 	CPU 		*CPU
 	PPU			*PPU
 	MemoryBus 	*MemoryBus
 	TimerCycles uint16
 	DivCycles	uint16
+	screen 		Screen
+	Framebuffer *[FramebufferWidth][FramebufferHeight][3]uint8
 	paused		bool
 	LogOpcodes	bool
 }
 
-const DivFreq = 0xff
-
-func InitGameboy(romPath string) (*Gameboy, error) {
+func InitGameboy(romPath string, screen Screen) (*Gameboy, error) {
 	gb := &Gameboy{}
+	gb.screen = screen
 	gb.CPU = InitCPU(gb)
 	mb := InitMemoryBus(gb)
 	gb.MemoryBus = mb
 	ppu := InitPPU(gb)
 	gb.PPU = ppu
+	gb.Framebuffer = &[FramebufferWidth][FramebufferHeight][3]uint8{}
+	gb.clearScreen()
 	_, err := mb.LoadCartridge(romPath)
 	if err != nil {
 		return nil, err
@@ -130,11 +139,33 @@ func (gb *Gameboy) StepTimer(cycles uint16) {
 	}
 }
 
+func (gb *Gameboy) IsDisplayEnabled() bool {
+	lcdc := gb.MemoryBus.ReadAddress(LCDControlAddress)
+	return bitEnabled(lcdc, 7)
+}
+
+func (gb *Gameboy) clearScreen() {
+	for x := range FramebufferWidth {
+		for y := range FramebufferHeight {
+			gb.Framebuffer[x][y][0] = 255
+			gb.Framebuffer[x][y][1] = 255
+			gb.Framebuffer[x][y][2] = 255
+		}
+	}
+}
+
+func (gb *Gameboy) VBlankRequested() bool {
+	return bitEnabled(gb.MemoryBus.IF, 0)
+}
+
 func (gb *Gameboy) Step() error {
 	cycles, err := gb.CPU.Step()
 	if err != nil {
 		return err
 	}
 	gb.MemoryBus.Step(cycles)
+	if gb.VBlankRequested() {
+		gb.screen.Render(gb.Framebuffer)
+	}
 	return nil
 }

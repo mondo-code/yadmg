@@ -5,7 +5,7 @@ Currently, this emulator passes blargg's cpu_instrs (the individual tests) and i
 
 ### Build
 ```sh
-go build -o yadmg cmd/emu/main.go
+go build -o yadmg ./cmd/emu/
 ```
 
 ### Usage

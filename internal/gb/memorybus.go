@@ -47,15 +47,17 @@ const (
 	TMAAddress 			uint16 = 0xff06
 	TACAddress 			uint16 = 0xff07
 	IFAddress 			uint16 = 0xff0f
+	LCDControlAddress 	uint16 = 0xff40
+	STATAddress			uint16 = 0xff41
 	LYAddress			uint16 = 0xff44
 	LYCAddress			uint16 = 0xff45
 	IEAddress 			uint16 = 0xffff
 )
 
 type MemoryBus struct {
-	gb 	   *Gameboy
-	cart   *Cartridge
-	memory [0x10000]byte
+	gb 	   			*Gameboy
+	cart   			*Cartridge
+	memory 			[0x10000]byte
 	IF				byte
 	IE 				byte
 }
@@ -148,6 +150,8 @@ func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 			mb.gb.PPU.lyc = val 
 		case addr >= VRAMBegin && addr <= VRAMEnd:
 			mb.gb.PPU.WriteVRAM(addr, val)
+		case addr >= OAMBegin && addr <= OAMEnd:
+			mb.gb.PPU.WriteOAM(addr, val)
 		default:
 			mb.memory[addr] = val
 	}
