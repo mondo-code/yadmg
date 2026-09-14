@@ -154,18 +154,11 @@ func (gb *Gameboy) clearScreen() {
 	}
 }
 
-func (gb *Gameboy) VBlankRequested() bool {
-	return bitEnabled(gb.MemoryBus.IF, 0)
-}
-
 func (gb *Gameboy) Step() error {
 	cycles, err := gb.CPU.Step()
 	if err != nil {
 		return err
 	}
 	gb.MemoryBus.Step(cycles)
-	if gb.VBlankRequested() {
-		gb.screen.Render(gb.Framebuffer)
-	}
 	return nil
 }

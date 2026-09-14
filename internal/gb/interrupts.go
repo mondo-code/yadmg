@@ -16,10 +16,6 @@ const (
 	JoypadAddr = 0x60
 )
 
-func (mb *MemoryBus) VBlankInterruptEnabled() bool {
-	return bitEnabled(mb.IE, 0)
-}
-
 func (mb *MemoryBus) LCDStatInterruptEnabled() bool {
 	return bitEnabled(mb.IE, 1)
 }
@@ -34,6 +30,10 @@ func (mb *MemoryBus) SerialInterruptEnabled() bool {
 
 func (mb *MemoryBus) JoypadInterruptEnabled() bool {
 	return bitEnabled(mb.IE, 4)
+}
+
+func (mb *MemoryBus) VBlankRequested() bool {
+	return bitEnabled(mb.IF, 0)
 }
 
 func (mb *MemoryBus) SetVBlank() {

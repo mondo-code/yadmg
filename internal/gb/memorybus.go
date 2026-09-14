@@ -49,8 +49,13 @@ const (
 	IFAddress 			uint16 = 0xff0f
 	LCDControlAddress 	uint16 = 0xff40
 	STATAddress			uint16 = 0xff41
+	SCYAddress			uint16 = 0xff42
+	SCXAddress			uint16 = 0xff43
 	LYAddress			uint16 = 0xff44
 	LYCAddress			uint16 = 0xff45
+	BGPAddress			uint16 = 0xff47
+	WYAddress 			uint16 = 0xff4a
+	WXAddress			uint16 = 0xff4b
 	IEAddress 			uint16 = 0xffff
 )
 
@@ -72,25 +77,17 @@ func InitMemoryBus(gb *Gameboy) *MemoryBus {
 func (mb *MemoryBus) Step(cycles uint16) {
 	// have GPU step and communicate VBlank and LCD status, trigger flags for
 	// each if it comes back positive
-	var vblank bool
-	var lcd bool
 	req := mb.gb.PPU.Step(cycles)
 	switch req {
 	case VBlankRequest:
-		vblank = true
-	case LCDStatRequest:
-		lcd = true
-	case BothRequest:
-		vblank = true
-		lcd = true
-	}
-
-	if vblank {
 		mb.SetVBlank()
-	}
-
-	if lcd {
+		mb.gb.screen.Render(mb.gb.Framebuffer)
+	case LCDStatRequest:
 		mb.SetLCD()
+	case BothRequest:
+		mb.SetVBlank()
+		mb.SetLCD()
+		mb.gb.screen.Render(mb.gb.Framebuffer)
 	}
 }
 
@@ -121,6 +118,16 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 			return mb.gb.PPU.line
 		case addr == LYCAddress:
 			return mb.gb.PPU.lyc
+		case addr == SCXAddress:
+			return mb.gb.PPU.scx
+		case addr == SCYAddress:
+			return mb.gb.PPU.scy
+		case addr == BGPAddress:
+			return mb.gb.PPU.bgp
+		case addr == LCDControlAddress:
+			return mb.gb.PPU.lcdc
+		case addr == STATAddress:
+			return mb.gb.PPU.stat
 		case addr >= VRAMBegin && addr <= VRAMEnd:
 			return mb.gb.PPU.ReadVRAM(addr)
 	}
@@ -147,11 +154,28 @@ func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 		case addr == LYAddress:
 			mb.gb.PPU.line = 0 
 		case addr == LYCAddress:
-			mb.gb.PPU.lyc = val 
+			mb.gb.PPU.WriteLYC(val)
+		case addr == SCXAddress:
+			mb.gb.PPU.scx = val
+		case addr == SCYAddress:
+			mb.gb.PPU.scy = val
+		case addr == LCDControlAddress:
+			mb.gb.PPU.lcdc = val
+		case addr == STATAddress:
+			// bits 3 through 6 of STAT are read/write, the rest are either unused 
+			// or read only
+			ppu := mb.gb.PPU
+			ppu.stat = (ppu.stat & 0x07) | (val & 0x78)
+		case addr == BGPAddress:
+			mb.gb.PPU.bgp = val
+		case addr == WXAddress:
+			// WX is window X position + 7, store with the offset upfront for ergonomics 
+			// while also preventing underflow
+			mb.gb.PPU.winX = byte(int16(val) - 7)
+		case addr == WYAddress:
+			mb.gb.PPU.winY = val
 		case addr >= VRAMBegin && addr <= VRAMEnd:
 			mb.gb.PPU.WriteVRAM(addr, val)
-		case addr >= OAMBegin && addr <= OAMEnd:
-			mb.gb.PPU.WriteOAM(addr, val)
 		default:
 			mb.memory[addr] = val
 	}

@@ -1,14 +1,18 @@
-package gb 
+package gb
 
 const (
 	VRAMBegin uint16 = 0x8000
-	VRAMEnd uint16 = 0x9fff
-	VRAMSize uint16 = VRAMEnd - VRAMBegin + 1
+	VRAMEnd   uint16 = 0x9fff
+	VRAMSize  uint16 = VRAMEnd - VRAMBegin + 1
 
 	TilesSize int = 384
+
+	ScreenHeight = 144
+	ScreenWidth  = 160
 )
 
 type TilePixelValue int
+
 const (
 	Zero = iota
 	One
@@ -22,13 +26,14 @@ func emptyTile() Tile {
 	var t Tile
 	for i := range 8 {
 		for j := range 8 {
-			t[i][j] = Zero 
+			t[i][j] = Zero
 		}
 	}
 	return t
 }
 
 type InterruptRequest int
+
 const (
 	NoRequest InterruptRequest = iota
 	VBlankRequest
@@ -38,12 +43,12 @@ const (
 
 func (r *InterruptRequest) add(other InterruptRequest) {
 	switch {
-		case *r == NoRequest:
-			*r = other
-		case *r == VBlankRequest && other == LCDStatRequest:
-			*r = BothRequest
-		case *r == LCDStatRequest && other == VBlankRequest:
-			*r = BothRequest
+	case *r == NoRequest:
+		*r = other
+	case *r == VBlankRequest && other == LCDStatRequest:
+		*r = BothRequest
+	case *r == LCDStatRequest && other == VBlankRequest:
+		*r = BothRequest
 	}
 }
 
@@ -52,40 +57,69 @@ type Screen interface {
 	IsRunning() bool
 }
 
-type PPUMode int 
+type PPUMode int
 const (
-	HBlank PPUMode = iota	
+	HBlank PPUMode = iota
 	VBlank
 	OAMAccess
 	VRAMAccess
 )
 
 type PPU struct {
-	gb 		*Gameboy
-	vram 	[VRAMSize]byte
-	oam 	[OAMSize]byte
-	tileSet [TilesSize]Tile
-	cycles 	uint16
-	line 	byte  // maps to ly at 0xff44
-	lyc		byte  // maps to lyc at 0xff45
-	mode 	PPUMode
+	gb      		*Gameboy
+	vram    		[VRAMSize]byte
+	oam     		[OAMSize]byte
+	tileSet 		[TilesSize]Tile
+	tileScanline 	[ScreenWidth]byte
+	cycles  		uint16
+	mode    		PPUMode
+	line    		byte // maps to ly
+	lyc     		byte
+	scy     		byte // scroll offset y
+	scx     		byte // scroll offset x
+	lcdc    		byte // lcd control register
+	bgp     		byte // background palette
+	stat 			byte // maps to STAT register
+	winX			byte // maps to WX register at 0xff4b
+	winY			byte // maps to WY register at 0xff4a
 
-	lcdEnabled 					bool
-	lyEqualsLYCInterruptEnabled bool
-	oamInterruptEnabled 		bool
-	vblankInterruptEnabled 		bool
-	hblankInterruptEnabled 		bool
-	lyEqualsLYC 				bool
+	lyEqualsLYC 	bool  // ly == lyc coincidence
+	yCondition		bool  // WY == LY condition maintained through frame
 }
 
 func InitPPU(gb *Gameboy) *PPU {
-	ppu := &PPU{gb: gb, mode: HBlank}
+	ppu := &PPU{
+		gb: gb, 
+		mode: HBlank,
+		lcdc: 0x91,
+	}
 
 	for i := range TilesSize {
 		ppu.tileSet[i] = emptyTile()
 	}
 
 	return ppu
+}
+
+func (ppu *PPU) LYEqualsLYCInterruptEnabled() bool {
+	return bitEnabled(ppu.stat, 6)
+}
+
+func (ppu *PPU) OAMInterruptEnabled() bool {
+	return bitEnabled(ppu.stat, 5)
+}
+
+func (ppu *PPU) VBlankInterruptEnabled() bool {
+	return bitEnabled(ppu.stat, 4)
+}
+
+func (ppu *PPU) HBlankInterruptEnabled() bool {
+	return bitEnabled(ppu.stat, 3)
+}
+
+func (ppu *PPU) setMode(mode PPUMode) {
+	ppu.mode = mode
+	ppu.stat = (ppu.stat &^ 0b11) | byte(mode)
 }
 
 // update graphics by individual frame
@@ -96,59 +130,173 @@ func (ppu *PPU) Step(cycles uint16) InterruptRequest {
 	// set mode in STAT register depending on cycles of current line
 	// OAM 80 cycles, mode3/drawing is 172, hblank is 204
 	switch ppu.mode {
-		case HBlank:
-			if ppu.cycles >= 204 {
-				ppu.cycles -= 204
-				ppu.line += 1
+	case HBlank:
+		if ppu.cycles >= 204 {
+			ppu.cycles -= 204
+			ppu.line += 1
 
-				if ppu.line >= 144 {
-					ppu.mode = VBlank
-					request.add(VBlankRequest)
-					if ppu.vblankInterruptEnabled {
-						request.add(LCDStatRequest)
-					}
-				} else {
-					ppu.mode = OAMAccess
-					if ppu.oamInterruptEnabled {
-						request.add(LCDStatRequest)
-					}
-				}
-				ppu.setEqualLinesCheck(&request)
-			}
-		case VBlank:
-			if ppu.cycles >= 456 {
-				ppu.cycles -= 456
-				ppu.line += 1
-				if ppu.line == 154 {
-					ppu.mode = OAMAccess
-					ppu.line = 0
-					if ppu.oamInterruptEnabled {
-						request.add(LCDStatRequest)
-					}
-				}
-				ppu.setEqualLinesCheck(&request)
-			}
-		case OAMAccess:
-			if ppu.cycles >= 80 {
-				ppu.cycles -= 80
-				ppu.mode = VRAMAccess
-			}
-		case VRAMAccess:
-			if ppu.cycles >= 172 {
-				ppu.cycles -= 172
-				if ppu.hblankInterruptEnabled {
+			if ppu.line >= 144 {
+				ppu.setMode(VBlank)
+				request.add(VBlankRequest)
+				if ppu.VBlankInterruptEnabled() {
 					request.add(LCDStatRequest)
 				}
-				ppu.mode = HBlank
+			} else {
+				ppu.setMode(OAMAccess)
+				if ppu.OAMInterruptEnabled() {
+					request.add(LCDStatRequest)
+				}
 			}
+			ppu.setEqualLinesCheck(&request)
+		}
+	case VBlank:
+		if ppu.cycles >= 456 {
+			ppu.cycles -= 456
+			ppu.line += 1
+			if ppu.line == 154 {
+				ppu.setMode(OAMAccess)
+				ppu.line = 0
+				if ppu.OAMInterruptEnabled() {
+					request.add(LCDStatRequest)
+				}
+			}
+			ppu.setEqualLinesCheck(&request)
+		}
+	case OAMAccess:
+		if ppu.cycles >= 80 {
+			ppu.cycles -= 80
+			ppu.setMode(VRAMAccess)
+		}
+	case VRAMAccess:
+		if ppu.cycles >= 172 {
+			ppu.cycles -= 172
+			if ppu.HBlankInterruptEnabled() {
+				request.add(LCDStatRequest)
+			}
+			ppu.setMode(HBlank)
+			ppu.DrawScanline()
+		}
 	}
 	return request
 }
 
+func (ppu *PPU) IsLCDEnabled() bool {
+	return bitEnabled(ppu.lcdc, 7)
+}
+
+// helper for DrawFrame to compute index in the tileset cache
+func tileSetIndex(tileID byte, unsignedAddressingEnabled bool) int {
+	if unsignedAddressingEnabled {
+		return int(tileID)
+	}
+	return 256 + int(int8(tileID))
+}
+
+func applyPalette(colorIdx TilePixelValue, bgp byte) byte {
+	shade := (bgp >> (uint(colorIdx) * 2)) & 0x03
+	shades := [4]byte{0xff, 0xaa, 0x55, 0x00}
+	return shades[shade]
+}
+
+func (ppu *PPU) setTilePixel(x, y, colorNum byte) {
+	shade := applyPalette(TilePixelValue(colorNum), ppu.bgp)
+	ppu.gb.Framebuffer[x][y][0] = shade
+	ppu.gb.Framebuffer[x][y][1] = shade
+	ppu.gb.Framebuffer[x][y][2] = shade
+	ppu.tileScanline[x] = colorNum
+}
+
+func (ppu *PPU) DrawTiles(scanline byte) {
+	var inWindow bool
+	if bitEnabled(ppu.lcdc, 5) && ppu.winY <= ppu.line {
+		inWindow = true
+	}
+
+	var tileData uint16 = 0x8800
+	var unsignedBytes bool
+	if bitEnabled(ppu.lcdc, 4) {
+		tileData = 0x8000
+		unsignedBytes = true
+	}
+
+	var tileMapBit int = 3
+	var backgroundMemory uint16 = 0x9800
+	if inWindow {
+		tileMapBit = 6
+	}
+	if bitEnabled(ppu.lcdc, tileMapBit) {
+		backgroundMemory = 0x9c00
+	}
+
+	var yPos byte
+	if !inWindow {
+		yPos = ppu.scy + scanline
+	} else {
+		yPos = scanline - ppu.winY
+	}
+
+	var tileRow = uint16(yPos / 8) * 32
+
+	for pixel := range byte(160) {
+		x := pixel + ppu.scx
+		if inWindow && pixel >= ppu.winX {
+			x = pixel - ppu.winX
+		}
+
+		tileCol := uint16(x / 8)
+		tileAddr := backgroundMemory + tileRow + tileCol
+
+		tileLocation := tileData
+		var tileNum int16
+		if unsignedBytes {
+			tileNum = int16(ppu.ReadVRAM(tileAddr))
+			tileLocation += uint16(tileNum * 16)
+		} else {
+			tileNum = int16(int8(ppu.ReadVRAM(tileAddr)))
+			tileLocation = uint16(int32(tileLocation) + int32((tileNum + 128) * 16))
+		}
+
+		line := (yPos % 8) * 2
+		tileData1 := ppu.ReadVRAM(tileLocation + uint16(line))
+		tileData2 := ppu.ReadVRAM(tileLocation + uint16(line) + 1)
+
+		colorBit := 7 - (x % 8)
+		colorNum := ((tileData2 >> colorBit) & 1) << 1 | (tileData1 >> colorBit) & 1
+		ppu.setTilePixel(x, scanline, colorNum)
+	}
+}
+
+func (ppu *PPU) DrawScanline() {
+	if !bitEnabled(ppu.lcdc, 7) {
+		return
+	}
+
+	ppu.DrawTiles(ppu.line)
+	// TODO: implement sprite rendering
+}
+
 func (ppu *PPU) setEqualLinesCheck(request *InterruptRequest) {
 	equal := ppu.line == ppu.lyc
-	if equal && ppu.lyEqualsLYCInterruptEnabled {
-		request.add(LCDStatRequest)
+	if equal {
+		// toggle coincidence bit in stat
+		SetBit(&ppu.stat, 2)
+		if ppu.LYEqualsLYCInterruptEnabled() {
+			request.add(LCDStatRequest)
+		}
+	} else {
+		UnsetBit(&ppu.stat, 2)
+	}
+	ppu.lyEqualsLYC = equal
+}
+
+// update LYC and LY == LYC coincidence
+func (ppu *PPU) WriteLYC(val byte) {
+	ppu.lyc = val
+	equal := ppu.lyc == ppu.line
+	if equal {
+		SetBit(&ppu.stat, 2)
+	} else {
+		UnsetBit(&ppu.stat, 2)
 	}
 	ppu.lyEqualsLYC = equal
 }
@@ -170,7 +318,7 @@ func (ppu *PPU) WriteVRAM(addr uint16, val byte) {
 	// so doing a bitwise and on the address with 0xfffe gives us the first byte.
 	normalizedAddress := physicalAddr & 0xfffe
 	tileByte1 := ppu.vram[normalizedAddress]
-	tileByte2 := ppu.vram[normalizedAddress + 1]
+	tileByte2 := ppu.vram[normalizedAddress+1]
 
 	// tile is 8 rows tall, since each row is encoded with two bytes a tile is 16 bytes in total
 	tileIndex := physicalAddr / 16
@@ -178,12 +326,12 @@ func (ppu *PPU) WriteVRAM(addr uint16, val byte) {
 
 	// get 8 pixels that make up a given row
 	for pixelIndex := range 8 {
-		// first, find corresponding bit that encodes pixel's value 
+		// first, find corresponding bit that encodes pixel's value
 		var mask byte = 1 << (7 - pixelIndex)
 		lsb := tileByte1 & mask
 		msb := tileByte2 & mask
 
-		var value TilePixelValue 
+		var value TilePixelValue
 		if lsb != 0 && msb != 0 {
 			value = Three
 		} else if lsb == 0 && msb != 0 {
@@ -196,6 +344,3 @@ func (ppu *PPU) WriteVRAM(addr uint16, val byte) {
 		ppu.tileSet[tileIndex][rowIndex][pixelIndex] = value
 	}
 }
-
-// TODO: implement
-func (ppu *PPU) WriteOAM(addr uint16, val byte) {}
