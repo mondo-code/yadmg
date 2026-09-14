@@ -20,6 +20,28 @@ const (
 	Three
 )
 
+// relevant hardware register bits
+// LCDC
+const (
+	BGWindowEnableBit byte = iota
+	OBJEnableBit
+	OBJSizeBit
+	BGTilemapBit
+	BGWindowTileBit
+	WindowEnableBit
+	WindowTilemapBit
+	LCDEnableBit
+)
+
+// STAT
+const (
+	CoincidenceBit byte = iota + 2
+	Mode0IntSelectBit
+	Mode1IntSelectBit
+	Mode2IntSelectBit
+	LYCIntSelectBit
+)
+
 type Tile [8][8]TilePixelValue
 
 func emptyTile() Tile {
@@ -102,19 +124,19 @@ func InitPPU(gb *Gameboy) *PPU {
 }
 
 func (ppu *PPU) LYEqualsLYCInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, 6)
+	return bitEnabled(ppu.stat, LYCIntSelectBit)
 }
 
 func (ppu *PPU) OAMInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, 5)
+	return bitEnabled(ppu.stat, Mode2IntSelectBit)
 }
 
 func (ppu *PPU) VBlankInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, 4)
+	return bitEnabled(ppu.stat, Mode1IntSelectBit)
 }
 
 func (ppu *PPU) HBlankInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, 3)
+	return bitEnabled(ppu.stat, Mode0IntSelectBit)
 }
 
 func (ppu *PPU) setMode(mode PPUMode) {
@@ -180,10 +202,6 @@ func (ppu *PPU) Step(cycles uint16) InterruptRequest {
 	return request
 }
 
-func (ppu *PPU) IsLCDEnabled() bool {
-	return bitEnabled(ppu.lcdc, 7)
-}
-
 // helper for DrawFrame to compute index in the tileset cache
 func tileSetIndex(tileID byte, unsignedAddressingEnabled bool) int {
 	if unsignedAddressingEnabled {
@@ -208,21 +226,21 @@ func (ppu *PPU) setTilePixel(x, y, colorNum byte) {
 
 func (ppu *PPU) DrawTiles(scanline byte) {
 	var inWindow bool
-	if bitEnabled(ppu.lcdc, 5) && ppu.winY <= ppu.line {
+	if bitEnabled(ppu.lcdc, WindowEnableBit) && ppu.winY <= ppu.line {
 		inWindow = true
 	}
 
 	var tileData uint16 = 0x8800
 	var unsignedBytes bool
-	if bitEnabled(ppu.lcdc, 4) {
+	if bitEnabled(ppu.lcdc, BGWindowTileBit) {
 		tileData = 0x8000
 		unsignedBytes = true
 	}
 
-	var tileMapBit int = 3
+	var tileMapBit byte = BGTilemapBit
 	var backgroundMemory uint16 = 0x9800
 	if inWindow {
-		tileMapBit = 6
+		tileMapBit = WindowTilemapBit
 	}
 	if bitEnabled(ppu.lcdc, tileMapBit) {
 		backgroundMemory = 0x9c00
@@ -267,7 +285,7 @@ func (ppu *PPU) DrawTiles(scanline byte) {
 }
 
 func (ppu *PPU) DrawScanline() {
-	if !bitEnabled(ppu.lcdc, 7) {
+	if !bitEnabled(ppu.lcdc, LCDEnableBit) {
 		return
 	}
 
@@ -278,8 +296,7 @@ func (ppu *PPU) DrawScanline() {
 func (ppu *PPU) setEqualLinesCheck(request *InterruptRequest) {
 	equal := ppu.line == ppu.lyc
 	if equal {
-		// toggle coincidence bit in stat
-		SetBit(&ppu.stat, 2)
+		SetBit(&ppu.stat, CoincidenceBit)
 		if ppu.LYEqualsLYCInterruptEnabled() {
 			request.add(LCDStatRequest)
 		}
@@ -294,9 +311,9 @@ func (ppu *PPU) WriteLYC(val byte) {
 	ppu.lyc = val
 	equal := ppu.lyc == ppu.line
 	if equal {
-		SetBit(&ppu.stat, 2)
+		SetBit(&ppu.stat, CoincidenceBit)
 	} else {
-		UnsetBit(&ppu.stat, 2)
+		UnsetBit(&ppu.stat, CoincidenceBit)
 	}
 	ppu.lyEqualsLYC = equal
 }

@@ -47,7 +47,7 @@ func setUpperByte(target uint16, hi byte) uint16 {
 	return (target & 0x00ff) | (uint16(hi) << 8)
 }
 
-func bitEnabled(target byte, bit int) bool {
+func bitEnabled(target byte, bit byte) bool {
 	return (target >> bit) & 1 == 1
 }
 

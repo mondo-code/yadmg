@@ -141,7 +141,7 @@ func (gb *Gameboy) StepTimer(cycles uint16) {
 
 func (gb *Gameboy) IsDisplayEnabled() bool {
 	lcdc := gb.MemoryBus.ReadAddress(LCDControlAddress)
-	return bitEnabled(lcdc, 7)
+	return bitEnabled(lcdc, LCDEnableBit)
 }
 
 func (gb *Gameboy) clearScreen() {
