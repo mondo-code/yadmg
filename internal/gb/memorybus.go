@@ -42,6 +42,7 @@ const (
 	HighRAMEnd 			uint16 = 0xfffe
 
 	// relevant hardware addresses
+	JoypadAddress		uint16 = 0xff00
 	DIVAddress 			uint16 = 0xff04
 	TIMAAddress 		uint16 = 0xff05
 	TMAAddress 			uint16 = 0xff06
@@ -60,11 +61,11 @@ const (
 )
 
 type MemoryBus struct {
-	gb 	   			*Gameboy
-	cart   			*Cartridge
-	memory 			[0x10000]byte
-	IF				byte
-	IE 				byte
+	gb 	   	*Gameboy
+	cart   	*Cartridge
+	memory 	[0x10000]byte
+	IF		byte
+	IE 		byte
 }
 
 func InitMemoryBus(gb *Gameboy) *MemoryBus {
@@ -110,6 +111,9 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 			return mb.cart.Read(addr)
 		case addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
 			return mb.cart.Read(addr)
+		case addr == JoypadAddress:
+			stored := mb.memory[JoypadAddress]
+			return 0xcf | (stored & 0x30)
 		case addr == IEAddress:
 			return mb.IE
 		case addr == IFAddress:
