@@ -7,15 +7,16 @@ const (
 )
 
 type Gameboy struct {
-	CPU 		*CPU
-	PPU			*PPU
-	MemoryBus 	*MemoryBus
-	TimerCycles uint16
-	DivCycles	uint16
-	screen 		Screen
-	Framebuffer *[FramebufferWidth][FramebufferHeight][3]uint8
-	paused		bool
-	LogOpcodes	bool
+	CPU 			*CPU
+	PPU				*PPU
+	MemoryBus 		*MemoryBus
+	TimerCycles 	uint16
+	DivCycles		uint16
+	screen 			Screen
+	Framebuffer 	*[FramebufferWidth][FramebufferHeight][3]uint8
+	paused			bool
+	LogOpcodes		bool
+	screenCleared 	bool
 }
 
 func InitGameboy(romPath string, screen Screen) (*Gameboy, error) {
@@ -152,6 +153,7 @@ func (gb *Gameboy) clearScreen() {
 			gb.Framebuffer[x][y][2] = 255
 		}
 	}
+	gb.screenCleared = true
 }
 
 func (gb *Gameboy) Step() error {

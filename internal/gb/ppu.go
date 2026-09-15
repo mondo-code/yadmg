@@ -106,14 +106,16 @@ type PPU struct {
 	winY			byte // maps to WY register at 0xff4a
 
 	lyEqualsLYC 	bool  // ly == lyc coincidence
+	// pan docs says this is supposed to be here, will use it eventually
 	yCondition		bool  // WY == LY condition maintained through frame
 }
 
 func InitPPU(gb *Gameboy) *PPU {
 	ppu := &PPU{
 		gb: gb, 
-		mode: HBlank,
+		mode: OAMAccess,
 		lcdc: 0x91,
+		stat: 0x85,
 	}
 
 	for i := range TilesSize {
@@ -146,6 +148,17 @@ func (ppu *PPU) setMode(mode PPUMode) {
 
 // update graphics by individual frame
 func (ppu *PPU) Step(cycles uint16) InterruptRequest {
+	if !bitEnabled(ppu.lcdc, LCDEnableBit) {
+		if !ppu.gb.screenCleared {
+			ppu.gb.clearScreen()
+		}
+		ppu.cycles = 456
+		ppu.line = 0
+		ppu.setMode(HBlank)
+		return NoRequest
+	}
+	ppu.gb.screenCleared = false
+
 	request := NoRequest
 	ppu.cycles += cycles
 
@@ -195,8 +208,8 @@ func (ppu *PPU) Step(cycles uint16) InterruptRequest {
 			if ppu.HBlankInterruptEnabled() {
 				request.add(LCDStatRequest)
 			}
-			ppu.setMode(HBlank)
 			ppu.DrawScanline()
+			ppu.setMode(HBlank)
 		}
 	}
 	return request
@@ -280,16 +293,14 @@ func (ppu *PPU) DrawTiles(scanline byte) {
 
 		colorBit := 7 - (x % 8)
 		colorNum := ((tileData2 >> colorBit) & 1) << 1 | (tileData1 >> colorBit) & 1
-		ppu.setTilePixel(x, scanline, colorNum)
+		ppu.setTilePixel(pixel, scanline, colorNum)
 	}
 }
 
 func (ppu *PPU) DrawScanline() {
-	if !bitEnabled(ppu.lcdc, LCDEnableBit) {
-		return
+	if bitEnabled(ppu.lcdc, BGWindowEnableBit) {
+		ppu.DrawTiles(ppu.line)
 	}
-
-	ppu.DrawTiles(ppu.line)
 	// TODO: implement sprite rendering
 }
 
@@ -301,7 +312,7 @@ func (ppu *PPU) setEqualLinesCheck(request *InterruptRequest) {
 			request.add(LCDStatRequest)
 		}
 	} else {
-		UnsetBit(&ppu.stat, 2)
+		UnsetBit(&ppu.stat, CoincidenceBit)
 	}
 	ppu.lyEqualsLYC = equal
 }
