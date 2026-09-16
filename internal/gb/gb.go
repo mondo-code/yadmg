@@ -13,6 +13,7 @@ type Gameboy struct {
 	TimerCycles 	uint16
 	DivCycles		uint16
 	screen 			Screen
+	joypad 			*Joypad
 	Framebuffer 	*[FramebufferWidth][FramebufferHeight][3]uint8
 	paused			bool
 	LogOpcodes		bool
@@ -25,9 +26,9 @@ func InitGameboy(romPath string, screen Screen) (*Gameboy, error) {
 	gb.CPU = InitCPU(gb)
 	mb := InitMemoryBus(gb)
 	gb.MemoryBus = mb
-	ppu := InitPPU(gb)
-	gb.PPU = ppu
+	gb.PPU = InitPPU(gb)
 	gb.Framebuffer = &[FramebufferWidth][FramebufferHeight][3]uint8{}
+	gb.joypad = InitJoypad()
 	gb.clearScreen()
 	_, err := mb.LoadCartridge(romPath)
 	if err != nil {

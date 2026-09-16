@@ -82,13 +82,21 @@ func (mb *MemoryBus) Step(cycles uint16) {
 	switch req {
 	case VBlankRequest:
 		mb.SetVBlank()
-		mb.gb.screen.Render(mb.gb.Framebuffer)
+		screen := mb.gb.screen
+		screen.Render(mb.gb.Framebuffer)
+		if mb.gb.joypad.Update(screen.DoInput()) {
+			mb.RequestInterrupt(JoypadFlag)
+		}
 	case LCDStatRequest:
 		mb.SetLCD()
 	case BothRequest:
 		mb.SetVBlank()
 		mb.SetLCD()
-		mb.gb.screen.Render(mb.gb.Framebuffer)
+		screen := mb.gb.screen
+		screen.Render(mb.gb.Framebuffer)
+		if mb.gb.joypad.Update(screen.DoInput()) {
+			mb.RequestInterrupt(JoypadFlag)
+		}
 	}
 }
 
@@ -112,8 +120,7 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 		case addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
 			return mb.cart.Read(addr)
 		case addr == JoypadAddress:
-			stored := mb.memory[JoypadAddress]
-			return 0xcf | (stored & 0x30)
+			return mb.gb.joypad.Read()
 		case addr == IEAddress:
 			return mb.IE
 		case addr == IFAddress:
@@ -140,47 +147,49 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 
 func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 	switch {
-		case addr == DIVAddress:
-			// any write to this resets div to $00, and it's reset when STOP is executed 
-			mb.memory[DIVAddress] = 0 
-		case addr == TACAddress:
-			// reset timer cycle counter on frequency change
-			oldFreq := mb.gb.GetTimerFreq()
-			mb.memory[TACAddress] = val
-			newFreq := mb.gb.GetTimerFreq()
-			if oldFreq != newFreq {
-				mb.gb.TimerCycles = 0
-			}
-		case addr == IEAddress:
-			mb.IE = val
-		case addr == IFAddress:
-			mb.IF = val
-		case addr == LYAddress:
-			mb.gb.PPU.line = 0 
-		case addr == LYCAddress:
-			mb.gb.PPU.WriteLYC(val)
-		case addr == SCXAddress:
-			mb.gb.PPU.scx = val
-		case addr == SCYAddress:
-			mb.gb.PPU.scy = val
-		case addr == LCDControlAddress:
-			mb.gb.PPU.lcdc = val
-		case addr == STATAddress:
-			// bits 3 through 6 of STAT are read/write, the rest are either unused 
-			// or read only
-			ppu := mb.gb.PPU
-			ppu.stat = (ppu.stat & 0x07) | (val & 0x78)
-		case addr == BGPAddress:
-			mb.gb.PPU.bgp = val
-		case addr == WXAddress:
-			// WX is window X position + 7, store with the offset upfront for ergonomics 
-			// while also preventing underflow
-			mb.gb.PPU.winX = byte(int16(val) - 7)
-		case addr == WYAddress:
-			mb.gb.PPU.winY = val
-		case addr >= VRAMBegin && addr <= VRAMEnd:
-			mb.gb.PPU.WriteVRAM(addr, val)
-		default:
-			mb.memory[addr] = val
+	case addr == JoypadAddress:
+		mb.gb.joypad.Write(val)
+	case addr == DIVAddress:
+		// any write to this resets div to $00, and it's reset when STOP is executed
+		mb.memory[DIVAddress] = 0
+	case addr == TACAddress:
+		// reset timer cycle counter on frequency change
+		oldFreq := mb.gb.GetTimerFreq()
+		mb.memory[TACAddress] = val
+		newFreq := mb.gb.GetTimerFreq()
+		if oldFreq != newFreq {
+			mb.gb.TimerCycles = 0
+		}
+	case addr == IEAddress:
+		mb.IE = val
+	case addr == IFAddress:
+		mb.IF = val
+	case addr == LYAddress:
+		mb.gb.PPU.line = 0
+	case addr == LYCAddress:
+		mb.gb.PPU.WriteLYC(val)
+	case addr == SCXAddress:
+		mb.gb.PPU.scx = val
+	case addr == SCYAddress:
+		mb.gb.PPU.scy = val
+	case addr == LCDControlAddress:
+		mb.gb.PPU.lcdc = val
+	case addr == STATAddress:
+		// bits 3 through 6 of STAT are read/write, the rest are either unused
+		// or read only
+		ppu := mb.gb.PPU
+		ppu.stat = (ppu.stat & 0x07) | (val & 0x78)
+	case addr == BGPAddress:
+		mb.gb.PPU.bgp = val
+	case addr == WXAddress:
+		// WX is window X position + 7, store with the offset upfront for ergonomics
+		// while also preventing underflow
+		mb.gb.PPU.winX = byte(int16(val) - 7)
+	case addr == WYAddress:
+		mb.gb.PPU.winY = val
+	case addr >= VRAMBegin && addr <= VRAMEnd:
+		mb.gb.PPU.WriteVRAM(addr, val)
+	default:
+		mb.memory[addr] = val
 	}
 }
