@@ -54,6 +54,7 @@ const (
 	SCXAddress			uint16 = 0xff43
 	LYAddress			uint16 = 0xff44
 	LYCAddress			uint16 = 0xff45
+	OAMDMAAddress		uint16 = 0xff46
 	BGPAddress			uint16 = 0xff47
 	WYAddress 			uint16 = 0xff4a
 	WXAddress			uint16 = 0xff4b
@@ -97,6 +98,15 @@ func (mb *MemoryBus) Step(cycles uint16) {
 		if mb.gb.joypad.Update(screen.DoInput()) {
 			mb.RequestInterrupt(JoypadFlag)
 		}
+	}
+}
+
+func (mb *MemoryBus) DMATransfer(val byte) {
+	addr := uint16(val) << 8
+
+	for i := range uint16(0xa0) {
+		oamData := mb.ReadAddress(addr + i)
+		mb.memory[OAMBegin + i] = oamData
 	}
 }
 
@@ -147,6 +157,8 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 
 func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 	switch {
+	case addr == OAMDMAAddress:
+		mb.DMATransfer(val)
 	case addr == JoypadAddress:
 		mb.gb.joypad.Write(val)
 	case addr == DIVAddress:

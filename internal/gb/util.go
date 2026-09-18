@@ -51,6 +51,10 @@ func bitEnabled(target byte, bit byte) bool {
 	return (target >> bit) & 1 == 1
 }
 
+func GetBit(target byte, bit byte) byte {
+	return (target >> bit) & 1
+}
+
 func SetBit(target *byte, bit byte) {
 	*target |= (1 << bit)
 }

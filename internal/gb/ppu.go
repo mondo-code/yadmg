@@ -91,7 +91,6 @@ const (
 type PPU struct {
 	gb      		*Gameboy
 	vram    		[VRAMSize]byte
-	oam     		[OAMSize]byte
 	tileSet 		[TilesSize]Tile
 	tileScanline 	[ScreenWidth]byte
 	cycles  		uint16
@@ -107,7 +106,7 @@ type PPU struct {
 	winY			byte // maps to WY register at 0xff4a
 
 	lyEqualsLYC 	bool  // ly == lyc coincidence
-	// pan docs says this is supposed to be here, will use it eventually
+	// pan docs says this is supposed to be here, will (probably) use it eventually
 	yCondition		bool  // WY == LY condition maintained through frame
 }
 
@@ -230,12 +229,18 @@ func applyPalette(colorIdx TilePixelValue, bgp byte) byte {
 	return shades[shade]
 }
 
-func (ppu *PPU) setTilePixel(x, y, colorNum byte) {
-	shade := applyPalette(TilePixelValue(colorNum), ppu.bgp)
-	ppu.gb.Framebuffer[x][y][0] = shade
-	ppu.gb.Framebuffer[x][y][1] = shade
-	ppu.gb.Framebuffer[x][y][2] = shade
+func (ppu *PPU) setTilePixel(x, y, colorNum, palette byte) {
+	ppu.setPixel(x, y, colorNum, palette, true)
 	ppu.tileScanline[x] = colorNum
+}
+
+func (ppu *PPU) setPixel(x, y, colorNum, palette byte, priority bool) {
+	shade := applyPalette(TilePixelValue(colorNum), palette)
+	if ppu.tileScanline[x] == 0 || priority {
+		ppu.gb.Framebuffer[x][y][0] = shade
+		ppu.gb.Framebuffer[x][y][1] = shade
+		ppu.gb.Framebuffer[x][y][2] = shade
+	}
 }
 
 func (ppu *PPU) DrawTiles(scanline byte) {
@@ -294,7 +299,89 @@ func (ppu *PPU) DrawTiles(scanline byte) {
 
 		colorBit := 7 - (x % 8)
 		colorNum := ((tileData2 >> colorBit) & 1) << 1 | (tileData1 >> colorBit) & 1
-		ppu.setTilePixel(pixel, scanline, colorNum)
+		ppu.setTilePixel(pixel, scanline, colorNum, ppu.bgp)
+	}
+}
+
+func (ppu *PPU) DrawSprites() {
+	mb := ppu.gb.MemoryBus
+	scanline := int32(ppu.line)
+	var ySize int32 = 8
+	if bitEnabled(ppu.lcdc, OBJSizeBit) {
+		ySize = 16
+	}
+
+	objPalette0 := mb.ReadAddress(0xff48)
+	objPalette1 := mb.ReadAddress(0xff49)
+
+	var minX[ScreenWidth]int32
+	const priorityOffset int32 = 100
+	lineSprites := 0
+	for sprite := range uint16(40) {
+		index := 0xfe00 + (sprite * 4)
+
+		yPos := int32(mb.ReadAddress(index)) - 16
+		if scanline < yPos || scanline >= (yPos + ySize) {
+			continue
+		}
+
+		if lineSprites >= 10 {
+			break
+		}
+		lineSprites++
+
+		xPos := int32(mb.ReadAddress(index + 1)) - 8
+		tileIndex := mb.ReadAddress(index + 2)
+		attributes := mb.ReadAddress(index + 3)
+
+		// in 8x16 mode the LSB of the tile index is ignored
+		if ySize == 16 {
+			tileIndex &= 0xfe
+		}
+
+		xFlip := bitEnabled(attributes, 5)
+		yFlip := bitEnabled(attributes, 6)
+		priority := !bitEnabled(attributes, 7)
+
+		line := scanline - yPos
+		if yFlip {
+			line = ySize - line - 1
+		}
+
+		dataAddress := uint16(tileIndex) * 16 + uint16(line * 2)
+		data1 := ppu.vram[dataAddress]
+		data2 := ppu.vram[dataAddress + 1]
+
+		// draw line of the sprite
+		for tilePixel := range byte(8) {
+			pix := int16(xPos) + int16(7 - tilePixel)
+			if pix < 0 || pix >= ScreenWidth {
+				continue
+			}
+
+			// this pixel is already owned by smaller or equal sprite
+			if minX[pix] != 0 && minX[pix] <= xPos + priorityOffset {
+				continue
+			}
+
+			colorBit := tilePixel
+			if xFlip {
+				colorBit = 7 - tilePixel 
+			}
+
+			colorNum := (GetBit(data2, colorBit) << 1 | GetBit(data1, colorBit))
+			// color 0 <=> transparent
+			if colorNum == 0 {
+				continue
+			}
+
+			var palette = objPalette0
+			if bitEnabled(attributes, 4) {
+				palette = objPalette1
+			}
+			ppu.setPixel(byte(pix), byte(scanline), colorNum, palette, priority)
+			minX[pix] = xPos + priorityOffset
+		}
 	}
 }
 
@@ -302,7 +389,10 @@ func (ppu *PPU) DrawScanline() {
 	if bitEnabled(ppu.lcdc, BGWindowEnableBit) {
 		ppu.DrawTiles(ppu.line)
 	}
-	// TODO: implement sprite rendering
+
+	if bitEnabled(ppu.lcdc, OBJEnableBit) {
+		ppu.DrawSprites()
+	}
 }
 
 func (ppu *PPU) setEqualLinesCheck(request *InterruptRequest) {
