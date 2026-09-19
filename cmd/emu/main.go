@@ -1,9 +1,10 @@
-package main 
+package main
 
 import (
 	"flag"
 	"gbemu/internal/gb"
 	"log"
+	"time"
 )
 
 var (
@@ -27,12 +28,19 @@ func main() {
 		gameboy.LogOpcodes = true
 	}
 
-	// raylib window init
 	lcd.Start("yadmg")
 	defer lcd.Close()
 
-	for lcd.IsRunning() {
-		if err := gameboy.Step(); err != nil {
+	ticker := time.NewTicker(4 * time.Millisecond)
+	last := time.Now()
+	for now := range ticker.C {
+		if !lcd.IsRunning() {
+			return
+		}
+
+		cycleBudget := uint64(now.Sub(last)) * gb.CPUSpeedHz / uint64(time.Second)
+		last = now
+		if err := gameboy.Step(cycleBudget); err != nil {
 			log.Fatalf("error during gameboy step: %v\n", err.Error())
 		}
 	}

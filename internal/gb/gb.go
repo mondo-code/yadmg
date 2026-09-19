@@ -10,6 +10,7 @@ type Gameboy struct {
 	CPU 			*CPU
 	PPU				*PPU
 	MemoryBus 		*MemoryBus
+	emuCycles		uint64
 	TimerCycles 	uint16
 	DivCycles		uint16
 	screen 			Screen
@@ -157,11 +158,15 @@ func (gb *Gameboy) clearScreen() {
 	gb.screenCleared = true
 }
 
-func (gb *Gameboy) Step() error {
-	cycles, err := gb.CPU.Step()
-	if err != nil {
-		return err
+func (gb *Gameboy) Step(cycleBudget uint64) error {
+	for gb.emuCycles < cycleBudget {
+		cycles, err := gb.CPU.Step()
+		if err != nil {
+			return err
+		}
+		gb.MemoryBus.Step(cycles)
+		gb.emuCycles += uint64(cycles)
 	}
-	gb.MemoryBus.Step(cycles)
+	gb.emuCycles -= cycleBudget
 	return nil
 }
