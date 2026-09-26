@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	debugMode = flag.Bool("debug", false, "debug output to track PC, SP, and register values for each opcode") 
+	debugMode = flag.Bool("debug", false, "debug output to track PC, SP, and register values for each opcode")
 )
 
 func main() {

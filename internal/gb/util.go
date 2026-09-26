@@ -1,10 +1,10 @@
-package gb 
+package gb
 
 func boolToUint8(b bool) uint8 {
 	if b == true {
 		return 1
 	}
-	return 0 
+	return 0
 }
 
 func bytesToWord(b1 byte, b2 byte) uint16 {
@@ -17,12 +17,12 @@ func wordToBytes(n uint16) (byte, byte) {
 
 func sumBytes(a, b byte) (sum byte, overflow bool) {
 	sum = a + b
-	return sum, a > 0xff - b 
+	return sum, a > 0xff-b
 }
 
 func sumUint16(a, b uint16) (sum uint16, overflow bool) {
 	sum = a + b
-	return sum, a > 0xffff - b 
+	return sum, a > 0xffff-b
 }
 
 func subBytes(a, b byte) (res byte, underflow bool) {
@@ -48,7 +48,7 @@ func setUpperByte(target uint16, hi byte) uint16 {
 }
 
 func bitEnabled(target byte, bit byte) bool {
-	return (target >> bit) & 1 == 1
+	return (target>>bit)&1 == 1
 }
 
 func GetBit(target byte, bit byte) byte {

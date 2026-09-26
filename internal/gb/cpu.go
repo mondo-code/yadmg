@@ -1,4 +1,4 @@
-package gb 
+package gb
 
 import (
 	"fmt"
@@ -17,16 +17,16 @@ type Registers struct {
 }
 
 type CPU struct {
-	gb 				*Gameboy
-	regs 			Registers
-	flags   		FlagsRegister
-	PC      		uint16
-	SP 				uint16
-	instructions 	[0x100]Instruction
-	cbInstructions 	[0x100]Instruction
-	Halted 			bool
-	IME 			bool
-	IMEPending		bool
+	gb             *Gameboy
+	regs           Registers
+	flags          FlagsRegister
+	PC             uint16
+	SP             uint16
+	instructions   [0x100]Instruction
+	cbInstructions [0x100]Instruction
+	Halted         bool
+	IME            bool
+	IMEPending     bool
 }
 
 func (cpu *CPU) getBC() uint16 {
@@ -86,8 +86,8 @@ func (cpu *CPU) Step() (cycles uint16, err error) {
 		}
 
 		operands := []byte{
-			cpu.gb.MemoryBus.ReadAddress(cpu.PC+1),
-			cpu.gb.MemoryBus.ReadAddress(cpu.PC+2),
+			cpu.gb.MemoryBus.ReadAddress(cpu.PC + 1),
+			cpu.gb.MemoryBus.ReadAddress(cpu.PC + 2),
 		}
 
 		if cpu.gb.LogOpcodes {
@@ -104,27 +104,27 @@ func (cpu *CPU) Step() (cycles uint16, err error) {
 	return cycles, nil
 }
 
-// this is representable as a byte but DMG-01 justifies this as being less error prone 
+// this is representable as a byte but DMG-01 justifies this as being less error prone
 // would like to refactor this into a byte later for performance
 type FlagsRegister struct {
-	Zero bool
-	Subtract bool
+	Zero      bool
+	Subtract  bool
 	HalfCarry bool
-	Carry bool
+	Carry     bool
 }
 
 const (
-	ZeroFlagLocation 		= 7
-	SubtractFlagLocation 	= 6
-	HalfCarryFlagLoction 	= 5
-	CarryFlagLocation 		= 4
+	ZeroFlagLocation     = 7
+	SubtractFlagLocation = 6
+	HalfCarryFlagLoction = 5
+	CarryFlagLocation    = 4
 )
 
 func (fr *FlagsRegister) convertToByte() byte {
-	return byte((boolToUint8(fr.Zero) << ZeroFlagLocation) | 
-	(boolToUint8(fr.Subtract) << SubtractFlagLocation) | 
-	(boolToUint8(fr.HalfCarry) << HalfCarryFlagLoction) | 
-	(boolToUint8(fr.Carry) << CarryFlagLocation))
+	return byte((boolToUint8(fr.Zero) << ZeroFlagLocation) |
+		(boolToUint8(fr.Subtract) << SubtractFlagLocation) |
+		(boolToUint8(fr.HalfCarry) << HalfCarryFlagLoction) |
+		(boolToUint8(fr.Carry) << CarryFlagLocation))
 }
 
 func (fr *FlagsRegister) convertFromByte(val byte) {
@@ -139,7 +139,7 @@ func InitCPU(gb *Gameboy) *CPU {
 		gb: gb,
 		// initial values for registers
 		regs: Registers{
-			A: 0x01, 
+			A: 0x01,
 			B: 0x00,
 			C: 0x13,
 			D: 0x00,
@@ -148,15 +148,15 @@ func InitCPU(gb *Gameboy) *CPU {
 			L: 0x4d,
 		},
 		flags: FlagsRegister{
-			Zero: true,
-			Subtract: false,
+			Zero:      true,
+			Subtract:  false,
 			HalfCarry: true,
-			Carry: true,
+			Carry:     true,
 		},
-		PC: 0x0100,  // initialized at cartridge entry point
-		SP: 0xfffe,
+		PC:     0x0100, // initialized at cartridge entry point
+		SP:     0xfffe,
 		Halted: false,
-		IME: false,
+		IME:    false,
 	}
 
 	cpu.initInstructions()
@@ -215,14 +215,14 @@ func (cpu *CPU) pop() (res uint16) {
 	byte2 := cpu.gb.MemoryBus.ReadAddress(sp + 1)
 	res = setUpperByte(res, byte2)
 	cpu.setSP(sp + 2)
-	return res 
+	return res
 }
 
 func (cpu *CPU) rst(addr uint16) uint16 {
 	cpu.SP--
-	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getUpperByte(cpu.PC + 1))
+	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getUpperByte(cpu.PC+1))
 	cpu.SP--
-	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getLowerByte(cpu.PC + 1))
+	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getLowerByte(cpu.PC+1))
 	return addr
 }
 
@@ -236,19 +236,19 @@ func (cpu *CPU) add(val byte, addCarry bool) {
 	total, doCarry := sumBytes(sum, carryIn)
 
 	cpu.flags.Subtract = false
-	cpu.flags.Carry = sumCarry || doCarry 
-	cpu.flags.HalfCarry = (cpu.regs.A & 0xf) + (val & 0xf) + carryIn > 0xf   
+	cpu.flags.Carry = sumCarry || doCarry
+	cpu.flags.HalfCarry = (cpu.regs.A&0xf)+(val&0xf)+carryIn > 0xf
 
-	cpu.regs.A = total 
+	cpu.regs.A = total
 	cpu.flags.Zero = (cpu.regs.A == 0)
 }
 
 func (cpu *CPU) add_hl(val uint16) {
-	hlVal := bytesToWord(cpu.regs.H, cpu.regs.L) 
+	hlVal := bytesToWord(cpu.regs.H, cpu.regs.L)
 	sum, overflow := sumUint16(val, uint16(hlVal))
 	cpu.flags.Subtract = false
 	cpu.flags.Carry = overflow
-	cpu.flags.HalfCarry = (hlVal & 0x0fff) + (val & 0x0fff) > 0x0fff   
+	cpu.flags.HalfCarry = (hlVal&0x0fff)+(val&0x0fff) > 0x0fff
 	cpu.regs.H, cpu.regs.L = wordToBytes(sum)
 }
 
@@ -262,20 +262,20 @@ func (cpu *CPU) sub(val byte, addCarry bool) {
 	diff, underflow := subBytes(cpu.regs.A, val)
 	res, doUnderflow := subBytes(diff, carryIn)
 
-	cpu.flags.Subtract = true 
+	cpu.flags.Subtract = true
 	cpu.flags.Carry = underflow || doUnderflow
-	cpu.flags.HalfCarry = (cpu.regs.A & 0xf) < (val & 0xf) + carryIn 
+	cpu.flags.HalfCarry = (cpu.regs.A & 0xf) < (val&0xf)+carryIn
 
-	cpu.regs.A = res 
+	cpu.regs.A = res
 	cpu.flags.Zero = (cpu.regs.A == 0)
 }
 
 // bitwise ops
 func (cpu *CPU) and(val byte) {
 	cpu.flags.Subtract = false
-	cpu.flags.HalfCarry = true 
+	cpu.flags.HalfCarry = true
 	cpu.flags.Carry = false
-	cpu.regs.A &= val 
+	cpu.regs.A &= val
 	cpu.flags.Zero = (cpu.regs.A == 0)
 }
 
@@ -283,7 +283,7 @@ func (cpu *CPU) or(val byte) {
 	cpu.flags.Subtract = false
 	cpu.flags.HalfCarry = false
 	cpu.flags.Carry = false
-	cpu.regs.A |= val 
+	cpu.regs.A |= val
 	cpu.flags.Zero = (cpu.regs.A == 0)
 }
 
@@ -291,17 +291,17 @@ func (cpu *CPU) xor(val byte) {
 	cpu.flags.Subtract = false
 	cpu.flags.HalfCarry = false
 	cpu.flags.Carry = false
-	cpu.regs.A ^= val 
+	cpu.regs.A ^= val
 	cpu.flags.Zero = (cpu.regs.A == 0)
 }
 
-// compare A with val 
+// compare A with val
 func (cpu *CPU) cp_n(val byte) {
 	cpu.flags.Subtract = true
 	if (cpu.regs.A & 0xf) < (val & 0xf) {
 		cpu.flags.HalfCarry = true
 	} else {
-		cpu.flags.HalfCarry = false 
+		cpu.flags.HalfCarry = false
 	}
 
 	if cpu.regs.A < val {
@@ -315,7 +315,7 @@ func (cpu *CPU) cp_n(val byte) {
 
 // increment 8 bit target
 func (cpu *CPU) inc_n(target *byte) {
-	cpu.flags.Subtract = false 
+	cpu.flags.Subtract = false
 	cpu.flags.HalfCarry = (*target & 0x0f) == 0x0f
 	*target += 1
 	cpu.flags.Zero = (*target == 0)
@@ -329,13 +329,13 @@ func (cpu *CPU) inc_nn(getReg func() uint16, setReg func(uint16)) {
 
 // decrement 8 bit target
 func (cpu *CPU) dec_n(target *byte) {
-	cpu.flags.Subtract = true 
+	cpu.flags.Subtract = true
 	cpu.flags.HalfCarry = (*target & 0x0f) == 0x00
 	*target -= 1
 	cpu.flags.Zero = (*target == 0)
 }
 
-// decrement 16 bit target 
+// decrement 16 bit target
 func (cpu *CPU) dec_nn(getReg func() uint16, setReg func(uint16)) {
 	val := getReg()
 	setReg(val - 1)
@@ -359,10 +359,10 @@ func (cpu *CPU) rra() {
 	regVal := cpu.regs.A
 
 	// if the rightmost bit is a 1, it will "fall off" into the carry flag on rotate
-	if regVal & 0x01 == 0x01 {
-		newCarry = true 
-	} 
-	regVal >>= 1 
+	if regVal&0x01 == 0x01 {
+		newCarry = true
+	}
+	regVal >>= 1
 
 	// leftmost bit needs to be 1 if carry is set
 	if cpu.flags.Carry {
@@ -380,7 +380,7 @@ func (cpu *CPU) rla() {
 	newCarry := false
 	regVal := cpu.regs.A
 
-	if regVal & 0x80 == 0x80 {
+	if regVal&0x80 == 0x80 {
 		newCarry = true
 	}
 	regVal <<= 1
@@ -399,9 +399,9 @@ func (cpu *CPU) rla() {
 // right rotate A register, not through carry flag
 func (cpu *CPU) rrca() {
 	regVal := cpu.regs.A
-	bit0 := regVal & 0x01 
+	bit0 := regVal & 0x01
 	regVal >>= 1
-	
+
 	if bit0 != 0 {
 		regVal |= 0x80
 	}
@@ -415,11 +415,11 @@ func (cpu *CPU) rrca() {
 
 func (cpu *CPU) rlca() {
 	regVal := cpu.regs.A
-	bit7 := regVal & 0x80 
+	bit7 := regVal & 0x80
 	regVal <<= 1
-	
+
 	if bit7 != 0 {
-		regVal |= 0x01 
+		regVal |= 0x01
 	}
 
 	cpu.regs.A = regVal
@@ -430,17 +430,17 @@ func (cpu *CPU) rlca() {
 }
 
 func (cpu *CPU) cpl() {
-	 cpu.regs.A = ^cpu.regs.A
+	cpu.regs.A = ^cpu.regs.A
 }
 
 // test bit in target register
 func (cpu *CPU) bit(bit byte, target *byte) {
 	cpu.flags.Zero = ((*target & (1 << bit)) == 0)
 	cpu.flags.Subtract = false
-	cpu.flags.HalfCarry = true 
+	cpu.flags.HalfCarry = true
 }
 
-// reset particular bit of a register to 0 
+// reset particular bit of a register to 0
 func (cpu *CPU) reset(bit byte, target *byte) {
 	*target &= ^(1 << bit)
 }
@@ -474,7 +474,7 @@ func (cpu *CPU) rr(val *byte) {
 func (cpu *CPU) rl(val *byte) {
 	rotated := *val << 1
 	if cpu.flags.Carry {
-		rotated |= 0x01 
+		rotated |= 0x01
 	}
 
 	cpu.flags.Carry = ((*val >> 7) == 0x01)
@@ -489,7 +489,7 @@ func (cpu *CPU) rrc(val *byte) {
 	bit0 := *val & 0x01
 	rotated := *val >> 1
 	if bit0 != 0 {
-		rotated |= 0x80 
+		rotated |= 0x80
 	}
 
 	cpu.flags.Carry = (bit0 != 0)
@@ -500,10 +500,10 @@ func (cpu *CPU) rrc(val *byte) {
 }
 
 func (cpu *CPU) rlc(val *byte) {
-	bit7 := *val & 0x80 
+	bit7 := *val & 0x80
 	rotated := *val << 1
 	if bit7 != 0 {
-		rotated |= 0x01 
+		rotated |= 0x01
 	}
 
 	cpu.flags.Carry = (bit7 != 0)
@@ -517,16 +517,16 @@ func (cpu *CPU) rlc(val *byte) {
 // only relevant for right shift
 func (cpu *CPU) sra(val *byte) {
 	signBit := *val >> 7
-	rotated := *val >> 1 
+	rotated := *val >> 1
 	if signBit != 0 {
-		rotated |= 0x80 
+		rotated |= 0x80
 	}
 
 	cpu.flags.Zero = (rotated == 0)
 	cpu.flags.Subtract = false
 	cpu.flags.HalfCarry = false
 
-	if (*val & 0x01) == 0x01{
+	if (*val & 0x01) == 0x01 {
 		cpu.flags.Carry = true
 	} else {
 		cpu.flags.Carry = false
@@ -536,7 +536,7 @@ func (cpu *CPU) sra(val *byte) {
 }
 
 func (cpu *CPU) sla(val *byte) {
-	rotated := *val << 1 
+	rotated := *val << 1
 	cpu.flags.Zero = (rotated == 0)
 	cpu.flags.Subtract = false
 	cpu.flags.HalfCarry = false
@@ -576,11 +576,11 @@ func (cpu *CPU) getDAA() (byte, bool) {
 	var offset byte = 0
 	setCarry := false
 	aVal := cpu.regs.A
-	halfCarry := cpu.flags.HalfCarry 
+	halfCarry := cpu.flags.HalfCarry
 	carry := cpu.flags.Carry
 	subtract := cpu.flags.Subtract
 
-	if (!subtract && aVal & 0xf > 0x09) || halfCarry {
+	if (!subtract && aVal&0xf > 0x09) || halfCarry {
 		offset |= 0x06
 	}
 
@@ -595,5 +595,5 @@ func (cpu *CPU) getDAA() (byte, bool) {
 		aVal += offset
 	}
 
-	return aVal, setCarry 
+	return aVal, setCarry
 }

@@ -1,31 +1,31 @@
-package gb 
+package gb
 
 func (cpu *CPU) initInstructionsCB() {
 	// rlc instructions
 	cpu.cbInstructions[0x00] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rlc(&cpu.regs.B)
 		return cpu.PC + 2, 8
-	} 
+	}
 
 	cpu.cbInstructions[0x01] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rlc(&cpu.regs.C)
 		return cpu.PC + 2, 8
-	} 
+	}
 
 	cpu.cbInstructions[0x02] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rlc(&cpu.regs.D)
 		return cpu.PC + 2, 8
-	} 
+	}
 
 	cpu.cbInstructions[0x03] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rlc(&cpu.regs.E)
 		return cpu.PC + 2, 8
-	} 
+	}
 
 	cpu.cbInstructions[0x04] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rlc(&cpu.regs.H)
 		return cpu.PC + 2, 8
-	} 
+	}
 
 	cpu.cbInstructions[0x05] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rlc(&cpu.regs.L)
@@ -86,7 +86,7 @@ func (cpu *CPU) initInstructionsCB() {
 		cpu.rrc(&cpu.regs.A)
 		return cpu.PC + 2, 8
 	}
-	
+
 	// rl instructions
 	cpu.cbInstructions[0x10] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rl(&cpu.regs.B)
@@ -107,7 +107,7 @@ func (cpu *CPU) initInstructionsCB() {
 		cpu.rl(&cpu.regs.E)
 		return cpu.PC + 2, 8
 	}
-	
+
 	cpu.cbInstructions[0x14] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.rl(&cpu.regs.H)
 		return cpu.PC + 2, 8
@@ -188,7 +188,7 @@ func (cpu *CPU) initInstructionsCB() {
 		cpu.sla(&cpu.regs.D)
 		return cpu.PC + 2, 8
 	}
-	
+
 	cpu.cbInstructions[0x23] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
 		cpu.sla(&cpu.regs.E)
 		return cpu.PC + 2, 8
@@ -291,7 +291,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x36] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hlByte := cpu.gb.MemoryBus.ReadAddress(cpu.getHL()) 
+		hlByte := cpu.gb.MemoryBus.ReadAddress(cpu.getHL())
 		cpu.swap(&hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(cpu.getHL(), hlByte)
 		return cpu.PC + 2, 16
@@ -549,7 +549,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x66] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.bit(4, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -592,7 +592,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x6e] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.bit(5, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -635,7 +635,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x76] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.bit(6, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -678,7 +678,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x7e] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.bit(7, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -722,7 +722,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x86] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(0, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -765,7 +765,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x8e] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(1, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -808,7 +808,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x96] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(2, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -851,7 +851,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0x9e] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(3, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -894,7 +894,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xa6] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(4, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -937,7 +937,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xae] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(5, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -980,7 +980,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xb6] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(6, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1023,7 +1023,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xbe] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.reset(7, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1067,7 +1067,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xc6] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(0, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1110,7 +1110,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xce] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(1, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1153,7 +1153,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xd6] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(2, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1196,7 +1196,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xde] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(3, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1239,7 +1239,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xe6] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(4, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1282,7 +1282,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xee] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(5, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1325,7 +1325,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xf6] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(6, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)
@@ -1368,7 +1368,7 @@ func (cpu *CPU) initInstructionsCB() {
 	}
 
 	cpu.cbInstructions[0xfe] = func(cpu *CPU, operands []byte) (length uint16, cycles uint16) {
-		hl := cpu.getHL() 
+		hl := cpu.getHL()
 		hlByte := cpu.gb.MemoryBus.ReadAddress(hl)
 		cpu.set(7, &hlByte)
 		cpu.gb.MemoryBus.WriteToAddress(hl, hlByte)

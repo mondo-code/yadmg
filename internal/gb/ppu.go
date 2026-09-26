@@ -81,6 +81,7 @@ type Screen interface {
 }
 
 type PPUMode int
+
 const (
 	HBlank PPUMode = iota
 	VBlank
@@ -89,30 +90,30 @@ const (
 )
 
 type PPU struct {
-	gb      		*Gameboy
-	vram    		[VRAMSize]byte
-	tileSet 		[TilesSize]Tile
-	tileScanline 	[ScreenWidth]byte
-	cycles  		uint16
-	mode    		PPUMode
-	line    		byte // maps to ly
-	lyc     		byte
-	scy     		byte // scroll offset y
-	scx     		byte // scroll offset x
-	lcdc    		byte // lcd control register
-	bgp     		byte // background palette
-	stat 			byte // maps to STAT register
-	winX			byte // maps to WX register at 0xff4b
-	winY			byte // maps to WY register at 0xff4a
+	gb           *Gameboy
+	vram         [VRAMSize]byte
+	tileSet      [TilesSize]Tile
+	tileScanline [ScreenWidth]byte
+	cycles       uint16
+	mode         PPUMode
+	line         byte // maps to ly
+	lyc          byte
+	scy          byte // scroll offset y
+	scx          byte // scroll offset x
+	lcdc         byte // lcd control register
+	bgp          byte // background palette
+	stat         byte // maps to STAT register
+	winX         byte // maps to WX register at 0xff4b
+	winY         byte // maps to WY register at 0xff4a
 
-	lyEqualsLYC 	bool  // ly == lyc coincidence
+	lyEqualsLYC bool // ly == lyc coincidence
 	// pan docs says this is supposed to be here, will (probably) use it eventually
-	yCondition		bool  // WY == LY condition maintained through frame
+	yCondition bool // WY == LY condition maintained through frame
 }
 
 func InitPPU(gb *Gameboy) *PPU {
 	ppu := &PPU{
-		gb: gb, 
+		gb:   gb,
 		mode: OAMAccess,
 		lcdc: 0x91,
 		stat: 0x85,
@@ -272,7 +273,7 @@ func (ppu *PPU) DrawTiles(scanline byte) {
 		yPos = scanline - ppu.winY
 	}
 
-	var tileRow = uint16(yPos / 8) * 32
+	var tileRow = uint16(yPos/8) * 32
 
 	for pixel := range byte(160) {
 		x := pixel + ppu.scx
@@ -290,7 +291,7 @@ func (ppu *PPU) DrawTiles(scanline byte) {
 			tileLocation += uint16(tileNum * 16)
 		} else {
 			tileNum = int16(int8(ppu.ReadVRAM(tileAddr)))
-			tileLocation = uint16(int32(tileLocation) + int32((tileNum + 128) * 16))
+			tileLocation = uint16(int32(tileLocation) + int32((tileNum+128)*16))
 		}
 
 		line := (yPos % 8) * 2
@@ -298,7 +299,7 @@ func (ppu *PPU) DrawTiles(scanline byte) {
 		tileData2 := ppu.ReadVRAM(tileLocation + uint16(line) + 1)
 
 		colorBit := 7 - (x % 8)
-		colorNum := ((tileData2 >> colorBit) & 1) << 1 | (tileData1 >> colorBit) & 1
+		colorNum := ((tileData2>>colorBit)&1)<<1 | (tileData1>>colorBit)&1
 		ppu.setTilePixel(pixel, scanline, colorNum, ppu.bgp)
 	}
 }
@@ -314,14 +315,14 @@ func (ppu *PPU) DrawSprites() {
 	objPalette0 := mb.ReadAddress(0xff48)
 	objPalette1 := mb.ReadAddress(0xff49)
 
-	var minX[ScreenWidth]int32
+	var minX [ScreenWidth]int32
 	const priorityOffset int32 = 100
 	lineSprites := 0
 	for sprite := range uint16(40) {
 		index := 0xfe00 + (sprite * 4)
 
 		yPos := int32(mb.ReadAddress(index)) - 16
-		if scanline < yPos || scanline >= (yPos + ySize) {
+		if scanline < yPos || scanline >= (yPos+ySize) {
 			continue
 		}
 
@@ -330,7 +331,7 @@ func (ppu *PPU) DrawSprites() {
 		}
 		lineSprites++
 
-		xPos := int32(mb.ReadAddress(index + 1)) - 8
+		xPos := int32(mb.ReadAddress(index+1)) - 8
 		tileIndex := mb.ReadAddress(index + 2)
 		attributes := mb.ReadAddress(index + 3)
 
@@ -348,28 +349,28 @@ func (ppu *PPU) DrawSprites() {
 			line = ySize - line - 1
 		}
 
-		dataAddress := uint16(tileIndex) * 16 + uint16(line * 2)
+		dataAddress := uint16(tileIndex)*16 + uint16(line*2)
 		data1 := ppu.vram[dataAddress]
-		data2 := ppu.vram[dataAddress + 1]
+		data2 := ppu.vram[dataAddress+1]
 
 		// draw line of the sprite
 		for tilePixel := range byte(8) {
-			pix := int16(xPos) + int16(7 - tilePixel)
+			pix := int16(xPos) + int16(7-tilePixel)
 			if pix < 0 || pix >= ScreenWidth {
 				continue
 			}
 
 			// this pixel is already owned by smaller or equal sprite
-			if minX[pix] != 0 && minX[pix] <= xPos + priorityOffset {
+			if minX[pix] != 0 && minX[pix] <= xPos+priorityOffset {
 				continue
 			}
 
 			colorBit := tilePixel
 			if xFlip {
-				colorBit = 7 - tilePixel 
+				colorBit = 7 - tilePixel
 			}
 
-			colorNum := (GetBit(data2, colorBit) << 1 | GetBit(data1, colorBit))
+			colorNum := (GetBit(data2, colorBit)<<1 | GetBit(data1, colorBit))
 			// color 0 <=> transparent
 			if colorNum == 0 {
 				continue
@@ -421,7 +422,7 @@ func (ppu *PPU) WriteLYC(val byte) {
 }
 
 func (ppu *PPU) ReadVRAM(addr uint16) byte {
-	return ppu.vram[addr - VRAMBegin]
+	return ppu.vram[addr-VRAMBegin]
 }
 
 func (ppu *PPU) WriteVRAM(addr uint16, val byte) {

@@ -22,5 +22,6 @@ Debug/other options:
 ### Acknowledgements 
 Thanks to these projects for making this much easier to develop:
 - [goboy](https://github.com/Humpheh/goboy): very valuable second opinion on Go implementations
+- [mooneye-gb](https://github.com/Gekkio/mooneye-gb): excellent reference for hardware-accurate implementations
 - [DMG-01](https://github.com/rylev/DMG-01): easy to read and understand to get an idea of what to do 
 - [gameboy-doctor](https://github.com/robert/gameboy-doctor): super useful debugging tool

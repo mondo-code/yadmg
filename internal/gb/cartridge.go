@@ -1,15 +1,14 @@
-package gb 
+package gb
 
 import (
-	"fmt"
 	"os"
 )
 
 type Cartridge struct {
-	memoryBus 	*MemoryBus
-	mbc 		MBC
-	name 		string
-	filepath 	string
+	memoryBus *MemoryBus
+	mbc       MBC
+	name      string
+	filepath  string
 }
 
 func (c *Cartridge) Read(addr uint16) byte {
@@ -27,20 +26,35 @@ func InitCartFromFile(path string, bus *MemoryBus) (*Cartridge, error) {
 		return nil, err
 	}
 
-	if len(rom) > len(bus.memory) {
-		return nil, fmt.Errorf("size of ROM exceeds size of memory") 
+	// handle cartridge header data
+	mbcFlag := rom[0x147]
+	ramSizeFlag := rom[0x149]
+
+	var ramSize uint32
+	switch ramSizeFlag {
+	case 0x00, 0x01:
+		ramSize = 0
+	case 0x02:
+		ramSize = 8192
+	case 0x03:
+		ramSize = 32768
+	case 0x04:
+		ramSize = 131072
+	case 0x05:
+		ramSize = 65536
 	}
 
-	// determine MBC type from cartridge header
-	mbcFlag := rom[0x0147]
 	switch mbcFlag {
-	case 0x00, 0x08, 0x09, 0x0b, 0x0c, 0x0d:
+	case 0x00, 0x08, 0x09:
 		cart.mbc = InitROM(rom)
 	default:
 		switch {
-			case mbcFlag <= 0x03:
-				cart.mbc = InitMBC1(rom)
-			// TODO: more MBC types
+		case mbcFlag <= 0x03:
+			cart.mbc = InitMBC1(rom, ramSize)
+		case mbcFlag <= 0x06:
+			cart.mbc = InitMBC2(rom)
+		case mbcFlag <= 0x13:
+			cart.mbc = InitMBC3(rom, ramSize)
 		}
 	}
 

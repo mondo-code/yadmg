@@ -3,8 +3,8 @@ package main
 import rl "github.com/gen2brain/raylib-go/raylib"
 
 const (
-	LCDWidth int32 = 160
-	LCDHeight int32 = 144
+	LCDWidth     int32 = 160
+	LCDHeight    int32 = 144
 	initialScale int32 = 3
 )
 
@@ -14,12 +14,12 @@ const (
 var keybinds = [8]int32{rl.KeyZ, rl.KeyX, rl.KeyRightShift, rl.KeyEnter, rl.KeyL, rl.KeyH, rl.KeyK, rl.KeyJ}
 
 type LCD struct {
-	texture 		rl.Texture2D
+	texture rl.Texture2D
 }
 
 func (lcd *LCD) Start(name string) {
 	rl.SetConfigFlags(rl.FlagWindowResizable)
-	rl.InitWindow(LCDWidth * initialScale, LCDHeight * initialScale, name)
+	rl.InitWindow(LCDWidth*initialScale, LCDHeight*initialScale, name)
 
 	img := rl.GenImageColor(int(LCDWidth), int(LCDHeight), rl.Black)
 	lcd.texture = rl.LoadTextureFromImage(img)
@@ -31,7 +31,7 @@ func (lcd *LCD) IsRunning() bool {
 }
 
 func (lcd *LCD) Render(pixels *[160][144][3]uint8) {
-	data := make([]byte, LCDWidth * LCDHeight * 4)
+	data := make([]byte, LCDWidth*LCDHeight*4)
 	i := 0
 	for y := range LCDHeight {
 		for x := range LCDWidth {
@@ -45,9 +45,9 @@ func (lcd *LCD) Render(pixels *[160][144][3]uint8) {
 	rl.ClearBackground(rl.Black)
 
 	winWidth, winHeight := float32(rl.GetScreenWidth()), float32(rl.GetScreenHeight())
-	scale := min(winWidth / float32(LCDWidth), winHeight / float32(LCDHeight))
+	scale := min(winWidth/float32(LCDWidth), winHeight/float32(LCDHeight))
 	destWidth, destHeight := float32(LCDWidth)*scale, float32(LCDHeight)*scale
-	offsetX, offsetY := (winWidth-destWidth) / 2, (winHeight-destHeight) / 2
+	offsetX, offsetY := (winWidth-destWidth)/2, (winHeight-destHeight)/2
 	src := rl.Rectangle{Width: float32(LCDWidth), Height: float32(LCDHeight)}
 	dest := rl.Rectangle{X: offsetX, Y: offsetY, Width: destWidth, Height: destHeight}
 	rl.DrawTexturePro(lcd.texture, src, dest, rl.Vector2{}, 0, rl.Color{R: 0xe0, G: 0xf8, B: 0xd0, A: 0xff})

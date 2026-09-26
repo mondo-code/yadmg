@@ -1,24 +1,24 @@
 package gb
 
 const (
-	DivFreq = 0xff
-	FramebufferWidth = 160
+	DivFreq           = 0xff
+	FramebufferWidth  = 160
 	FramebufferHeight = 144
 )
 
 type Gameboy struct {
-	CPU 			*CPU
-	PPU				*PPU
-	MemoryBus 		*MemoryBus
-	emuCycles		uint64
-	TimerCycles 	uint16
-	DivCycles		uint16
-	screen 			Screen
-	joypad 			*Joypad
-	Framebuffer 	*[FramebufferWidth][FramebufferHeight][3]uint8
-	paused			bool
-	LogOpcodes		bool
-	screenCleared 	bool
+	CPU           *CPU
+	PPU           *PPU
+	MemoryBus     *MemoryBus
+	emuCycles     uint64
+	TimerCycles   uint16
+	DivCycles     uint16
+	screen        Screen
+	joypad        *Joypad
+	Framebuffer   *[FramebufferWidth][FramebufferHeight][3]uint8
+	paused        bool
+	LogOpcodes    bool
+	screenCleared bool
 }
 
 func InitGameboy(romPath string, screen Screen) (*Gameboy, error) {
@@ -53,7 +53,7 @@ func (gb *Gameboy) HandleInterrupts() (cycles uint16) {
 	mask := gb.MemoryBus.IE & gb.MemoryBus.IF
 
 	if mask != 0 {
-		gb.CPU.Halted = false 
+		gb.CPU.Halted = false
 	}
 
 	if !gb.CPU.IME {
@@ -61,32 +61,32 @@ func (gb *Gameboy) HandleInterrupts() (cycles uint16) {
 	}
 
 	// there are much nicer ways to write this, will probably refactor later
-	// handle requested interrupt 
-	if mask & VBlankFlag != 0 {
-		gb.MemoryBus.IF &= ^VBlankFlag 
+	// handle requested interrupt
+	if mask&VBlankFlag != 0 {
+		gb.MemoryBus.IF &= ^VBlankFlag
 		gb.CPU.jumpToISRAddress(VBlankAddr)
 		return 20
 	}
 
-	if mask & LCDStatFlag != 0 {
-		gb.MemoryBus.IF &= ^LCDStatFlag 
+	if mask&LCDStatFlag != 0 {
+		gb.MemoryBus.IF &= ^LCDStatFlag
 		gb.CPU.jumpToISRAddress(LCDStatAddr)
 		return 20
 	}
 
-	if mask & TimerFlag != 0 {
+	if mask&TimerFlag != 0 {
 		gb.MemoryBus.IF &= ^TimerFlag
 		gb.CPU.jumpToISRAddress(TimerAddr)
 		return 20
 	}
 
-	if mask & SerialFlag != 0 {
+	if mask&SerialFlag != 0 {
 		gb.MemoryBus.IF &= ^SerialFlag
 		gb.CPU.jumpToISRAddress(SerialAddr)
 		return 20
 	}
 
-	if mask & JoypadFlag != 0 {
+	if mask&JoypadFlag != 0 {
 		gb.MemoryBus.IF &= ^JoypadFlag
 		gb.CPU.jumpToISRAddress(JoypadAddr)
 		return 20
@@ -98,7 +98,7 @@ func (gb *Gameboy) HandleInterrupts() (cycles uint16) {
 func (gb *Gameboy) StepDivider(cycles uint16) {
 	gb.DivCycles += cycles
 	if gb.DivCycles >= DivFreq {
-		gb.DivCycles -= DivFreq 
+		gb.DivCycles -= DivFreq
 		gb.MemoryBus.memory[DIVAddress]++
 	}
 }
@@ -137,7 +137,7 @@ func (gb *Gameboy) StepTimer(cycles uint16) {
 			gb.MemoryBus.WriteToAddress(TIMAAddress, tma)
 			gb.MemoryBus.RequestInterrupt(TimerFlag)
 		} else {
-			gb.MemoryBus.WriteToAddress(TIMAAddress, tima + 1)
+			gb.MemoryBus.WriteToAddress(TIMAAddress, tima+1)
 		}
 	}
 }

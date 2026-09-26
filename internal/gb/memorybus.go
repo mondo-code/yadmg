@@ -1,72 +1,72 @@
-package gb 
+package gb
 
 import "fmt"
 
 // memory map definitions
 const (
-	BootRomBegin 		uint16 = 0x0000
-	BootRomEnd 			uint16 = 0x00ff
+	BootRomBegin uint16 = 0x0000
+	BootRomEnd   uint16 = 0x00ff
 
-	RomBank0Begin 		uint16 = 0x0000
-	RomBank0End 		uint16 = 0x3fff
+	RomBank0Begin uint16 = 0x0000
+	RomBank0End   uint16 = 0x3fff
 
-	RomBankNStart 		uint16 = 0x4000
-	RomBankNEnd 		uint16 = 0x7fff
+	RomBankNStart uint16 = 0x4000
+	RomBankNEnd   uint16 = 0x7fff
 
-	TileRamBegin 		uint16 = 0x8000
-	TileRamEnd 			uint16 = 0x97ff
+	TileRamBegin uint16 = 0x8000
+	TileRamEnd   uint16 = 0x97ff
 
-	BackgroundMapBegin 	uint16 = 0x9800
-	BackgroundMapEnd 	uint16 = 0x9fff
+	BackgroundMapBegin uint16 = 0x9800
+	BackgroundMapEnd   uint16 = 0x9fff
 
-	CartridgeRamBegin 	uint16 = 0xa000
-	CartridgeRamEnd 	uint16 = 0xbfff
+	CartridgeRamBegin uint16 = 0xa000
+	CartridgeRamEnd   uint16 = 0xbfff
 
-	WorkingRamBegin 	uint16 = 0xc000
-	WorkingRamEnd 		uint16 = 0xdfff
+	WorkingRamBegin uint16 = 0xc000
+	WorkingRamEnd   uint16 = 0xdfff
 
-	EchoRamBegin 		uint16 = 0xe000
-	EchoRamEnd 			uint16 = 0xfdff
+	EchoRamBegin uint16 = 0xe000
+	EchoRamEnd   uint16 = 0xfdff
 
-	OAMBegin 			uint16 = 0xfe00
-	OAMEnd 				uint16 = 0xfe9f
-	OAMSize 			uint16 = OAMEnd - OAMBegin + 1
+	OAMBegin uint16 = 0xfe00
+	OAMEnd   uint16 = 0xfe9f
+	OAMSize  uint16 = OAMEnd - OAMBegin + 1
 
-	UnusedBegin 		uint16 = 0xfea0
-	UnusedEnd 			uint16 = 0xfeff
+	UnusedBegin uint16 = 0xfea0
+	UnusedEnd   uint16 = 0xfeff
 
-	IORegistersBegin 	uint16 = 0xff00
-	IORegistersEnd 		uint16 = 0xff7f
+	IORegistersBegin uint16 = 0xff00
+	IORegistersEnd   uint16 = 0xff7f
 
-	HighRAMBegin 		uint16 = 0xff80
-	HighRAMEnd 			uint16 = 0xfffe
+	HighRAMBegin uint16 = 0xff80
+	HighRAMEnd   uint16 = 0xfffe
 
 	// relevant hardware addresses
-	JoypadAddress		uint16 = 0xff00
-	DIVAddress 			uint16 = 0xff04
-	TIMAAddress 		uint16 = 0xff05
-	TMAAddress 			uint16 = 0xff06
-	TACAddress 			uint16 = 0xff07
-	IFAddress 			uint16 = 0xff0f
-	LCDControlAddress 	uint16 = 0xff40
-	STATAddress			uint16 = 0xff41
-	SCYAddress			uint16 = 0xff42
-	SCXAddress			uint16 = 0xff43
-	LYAddress			uint16 = 0xff44
-	LYCAddress			uint16 = 0xff45
-	OAMDMAAddress		uint16 = 0xff46
-	BGPAddress			uint16 = 0xff47
-	WYAddress 			uint16 = 0xff4a
-	WXAddress			uint16 = 0xff4b
-	IEAddress 			uint16 = 0xffff
+	JoypadAddress     uint16 = 0xff00
+	DIVAddress        uint16 = 0xff04
+	TIMAAddress       uint16 = 0xff05
+	TMAAddress        uint16 = 0xff06
+	TACAddress        uint16 = 0xff07
+	IFAddress         uint16 = 0xff0f
+	LCDControlAddress uint16 = 0xff40
+	STATAddress       uint16 = 0xff41
+	SCYAddress        uint16 = 0xff42
+	SCXAddress        uint16 = 0xff43
+	LYAddress         uint16 = 0xff44
+	LYCAddress        uint16 = 0xff45
+	OAMDMAAddress     uint16 = 0xff46
+	BGPAddress        uint16 = 0xff47
+	WYAddress         uint16 = 0xff4a
+	WXAddress         uint16 = 0xff4b
+	IEAddress         uint16 = 0xffff
 )
 
 type MemoryBus struct {
-	gb 	   	*Gameboy
-	cart   	*Cartridge
-	memory 	[0x10000]byte
-	IF		byte
-	IE 		byte
+	gb     *Gameboy
+	cart   *Cartridge
+	memory [0x10000]byte
+	IF     byte
+	IE     byte
 }
 
 func InitMemoryBus(gb *Gameboy) *MemoryBus {
@@ -106,7 +106,7 @@ func (mb *MemoryBus) DMATransfer(val byte) {
 
 	for i := range uint16(0xa0) {
 		oamData := mb.ReadAddress(addr + i)
-		mb.memory[OAMBegin + i] = oamData
+		mb.memory[OAMBegin+i] = oamData
 	}
 }
 
@@ -125,38 +125,42 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 	}
 
 	switch {
-		case addr <= RomBankNEnd:
-			return mb.cart.Read(addr)
-		case addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
-			return mb.cart.Read(addr)
-		case addr == JoypadAddress:
-			return mb.gb.joypad.Read()
-		case addr == IEAddress:
-			return mb.IE
-		case addr == IFAddress:
-			return mb.IF
-		case addr == LYAddress:
-			return mb.gb.PPU.line
-		case addr == LYCAddress:
-			return mb.gb.PPU.lyc
-		case addr == SCXAddress:
-			return mb.gb.PPU.scx
-		case addr == SCYAddress:
-			return mb.gb.PPU.scy
-		case addr == BGPAddress:
-			return mb.gb.PPU.bgp
-		case addr == LCDControlAddress:
-			return mb.gb.PPU.lcdc
-		case addr == STATAddress:
-			return mb.gb.PPU.stat
-		case addr >= VRAMBegin && addr <= VRAMEnd:
-			return mb.gb.PPU.ReadVRAM(addr)
+	case addr <= RomBankNEnd, addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
+		return mb.cart.Read(addr)
+	case addr == JoypadAddress:
+		return mb.gb.joypad.Read()
+	case addr == IEAddress:
+		return mb.IE
+	case addr == IFAddress:
+		return mb.IF
+	case addr == LYAddress:
+		return mb.gb.PPU.line
+	case addr == LYCAddress:
+		return mb.gb.PPU.lyc
+	case addr == SCXAddress:
+		return mb.gb.PPU.scx
+	case addr == SCYAddress:
+		return mb.gb.PPU.scy
+	case addr == BGPAddress:
+		return mb.gb.PPU.bgp
+	case addr == LCDControlAddress:
+		return mb.gb.PPU.lcdc
+	case addr == STATAddress:
+		return mb.gb.PPU.stat
+	case addr == WYAddress:
+		return mb.gb.PPU.winY
+	case addr == WXAddress:
+		return mb.gb.PPU.winX + 7
+	case addr >= VRAMBegin && addr <= VRAMEnd:
+		return mb.gb.PPU.ReadVRAM(addr)
 	}
 	return mb.memory[addr]
 }
 
 func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 	switch {
+	case addr <= RomBankNEnd, addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
+		mb.cart.Write(addr, val)
 	case addr == OAMDMAAddress:
 		mb.DMATransfer(val)
 	case addr == JoypadAddress:

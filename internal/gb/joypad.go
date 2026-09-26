@@ -1,16 +1,16 @@
 package gb
 
 type Joypad struct {
-	sel			byte  // bits 4 and 5 in P1 (select d-pad and select buttons)
-	dpad 		byte  // bits 0, 1, 2, 3 for right, left, up, down 
-	buttons 	byte  // bits 0, 1, 2, 3 for A, B, start, select
+	sel     byte // bits 4 and 5 in P1 (select d-pad and select buttons)
+	dpad    byte // bits 0, 1, 2, 3 for right, left, up, down
+	buttons byte // bits 0, 1, 2, 3 for A, B, start, select
 }
 
 func InitJoypad() *Joypad {
 	return &Joypad{
-		dpad: 0x0,
+		dpad:    0x0,
 		buttons: 0x0,
-		sel: 0x30,
+		sel:     0x30,
 	}
 }
 
@@ -41,5 +41,5 @@ func (j *Joypad) Update(inp byte) bool {
 	j.dpad = (inp >> 4)
 	newJoypad := j.Read()
 
-	return oldJoypad &^ newJoypad & 0x0f != 0
+	return oldJoypad&^newJoypad&0x0f != 0
 }
