@@ -63,7 +63,7 @@ const (
 
 type MemoryBus struct {
 	gb     *Gameboy
-	cart   *Cartridge
+	Cart   *Cartridge
 	memory [0x10000]byte
 	IF     byte
 	IE     byte
@@ -99,6 +99,7 @@ func (mb *MemoryBus) Step(cycles uint16) {
 			mb.RequestInterrupt(JoypadFlag)
 		}
 	}
+	mb.Cart.Step()
 }
 
 func (mb *MemoryBus) DMATransfer(val byte) {
@@ -111,12 +112,12 @@ func (mb *MemoryBus) DMATransfer(val byte) {
 }
 
 func (mb *MemoryBus) LoadCartridge(romPath string) (int, error) {
-	cart, err := InitCartFromFile(romPath, mb)
+	cart, err := InitCartFromFile(romPath)
 	if err != nil {
 		return 0, err
 	}
-	mb.cart = cart
-	return cart.mbc.Size(), nil
+	mb.Cart = cart
+	return cart.mbc.RomSize(), nil
 }
 
 func (mb *MemoryBus) ReadAddress(addr uint16) byte {
@@ -126,7 +127,7 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 
 	switch {
 	case addr <= RomBankNEnd, addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
-		return mb.cart.Read(addr)
+		return mb.Cart.Read(addr)
 	case addr == JoypadAddress:
 		return mb.gb.joypad.Read()
 	case addr == IEAddress:
@@ -160,7 +161,7 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 	switch {
 	case addr <= RomBankNEnd, addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
-		mb.cart.Write(addr, val)
+		mb.Cart.Write(addr, val)
 	case addr == OAMDMAAddress:
 		mb.DMATransfer(val)
 	case addr == JoypadAddress:
