@@ -74,14 +74,7 @@ func (r *InterruptRequest) add(other InterruptRequest) {
 	}
 }
 
-type Screen interface {
-	Render(framebuffer *[160][144][3]uint8)
-	IsRunning() bool
-	DoInput() byte
-}
-
 type PPUMode int
-
 const (
 	HBlank PPUMode = iota
 	VBlank

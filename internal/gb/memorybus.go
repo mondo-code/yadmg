@@ -35,11 +35,11 @@ const (
 	UnusedBegin uint16 = 0xfea0
 	UnusedEnd   uint16 = 0xfeff
 
-	IORegistersBegin uint16 = 0xff00
-	IORegistersEnd   uint16 = 0xff7f
-
 	HighRAMBegin uint16 = 0xff80
 	HighRAMEnd   uint16 = 0xfffe
+
+	AudioBegin uint16 = 0xff10
+	AudioEnd uint16 = 0xff26
 
 	// relevant hardware addresses
 	JoypadAddress     uint16 = 0xff00
@@ -154,6 +154,8 @@ func (mb *MemoryBus) ReadAddress(addr uint16) byte {
 		return mb.gb.PPU.winX + 7
 	case addr >= VRAMBegin && addr <= VRAMEnd:
 		return mb.gb.PPU.ReadVRAM(addr)
+	case addr >= AudioBegin && addr <= WaveRamEnd:
+		return mb.gb.APU.Read(addr)
 	}
 	return mb.memory[addr]
 }
@@ -206,6 +208,8 @@ func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
 		mb.gb.PPU.winY = val
 	case addr >= VRAMBegin && addr <= VRAMEnd:
 		mb.gb.PPU.WriteVRAM(addr, val)
+	case addr >= AudioBegin && addr <= WaveRamEnd:
+		mb.gb.APU.Write(addr, val)
 	default:
 		mb.memory[addr] = val
 	}

@@ -72,7 +72,6 @@ func (cpu *CPU) setSP(val uint16) {
 }
 
 func (cpu *CPU) Step() (cycles uint16, err error) {
-
 	cycles += cpu.gb.HandleInterrupts()
 
 	var opCycles uint16 = 4

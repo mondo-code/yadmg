@@ -9,6 +9,8 @@ import (
 
 var (
 	debugMode = flag.Bool("debug", false, "debug output to track PC, SP, and register values for each opcode")
+	// this is dead for now, will use later
+	muteMode = flag.Bool("mute", false, "disable audio")
 )
 
 func main() {

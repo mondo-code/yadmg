@@ -6,10 +6,17 @@ const (
 	FramebufferHeight = 144
 )
 
+type Screen interface {
+	Render(framebuffer *[160][144][3]uint8)
+	IsRunning() bool
+	DoInput() byte
+}
+
 type Gameboy struct {
 	CPU           *CPU
 	PPU           *PPU
 	MemoryBus     *MemoryBus
+	APU 		  *APU
 	emuCycles     uint64
 	TimerCycles   uint16
 	DivCycles     uint16
@@ -29,6 +36,7 @@ func InitGameboy(romPath string, screen Screen) (*Gameboy, error) {
 	gb.MemoryBus = mb
 	gb.PPU = InitPPU(gb)
 	gb.Framebuffer = &[FramebufferWidth][FramebufferHeight][3]uint8{}
+	gb.APU = InitAPU()
 	gb.joypad = InitJoypad()
 	gb.clearScreen()
 	_, err := mb.LoadCartridge(romPath)
@@ -165,6 +173,7 @@ func (gb *Gameboy) Step(cycleBudget uint64) error {
 			return err
 		}
 		gb.MemoryBus.Step(cycles)
+		gb.APU.Step(cycles)
 		gb.emuCycles += uint64(cycles)
 	}
 	gb.emuCycles -= cycleBudget
