@@ -8,10 +8,9 @@ const (
 	initialScale int32 = 3
 )
 
-// default binds for dpad will be vim keys because i'm a maniac
 // indices correspond to the bit in the input byte returned by Input()
 // 0 = A, 1 = B, 2 = select, 3 = start, 4 = right, 5 = left, 6 = up, 7 = down
-var keybinds = [8]int32{rl.KeyZ, rl.KeyX, rl.KeyRightShift, rl.KeyEnter, rl.KeyL, rl.KeyH, rl.KeyK, rl.KeyJ}
+var keybinds = [8]int32{rl.KeyZ, rl.KeyX, rl.KeyRightShift, rl.KeyEnter, rl.KeyRight, rl.KeyLeft, rl.KeyUp, rl.KeyDown}
 
 type LCD struct {
 	texture rl.Texture2D
