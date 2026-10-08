@@ -19,6 +19,14 @@ Debug/other options:
     show debug output to track PC, SP and register values
 ```
 
+### Goals
+- [ ] Working APU
+- [ ] Configurable controls with YAML config file
+- [ ] Fix PPU rendering bugs that appear with certain games (Link's Awakening, Pac-Man known so far)
+
+### Non-goals
+- CGB support. At least for now, I'm not particularly interested in implementing all of the disparate state and branching logic that comes with it.
+
 ### Acknowledgements 
 Thanks to these projects for making this much easier to develop:
 - [goboy](https://github.com/Humpheh/goboy): very valuable second opinion on Go implementations
