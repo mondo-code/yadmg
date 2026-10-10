@@ -19,9 +19,12 @@ Debug/other options:
     show debug output to track PC, SP and register values
 ```
 
+### Configuration
+yadmg supports configuring controls via a YAML file `keymap.yml`, located either in the emulator's directory or in `$HOME/.config/yadmg`. An example configuration is included in the repository. All letter keys (make sure they're upper case in the config file) are mappable, as well as left shift, right shift, enter, and arrow keys. 
+
 ### Goals
+- [x] Configurable controls with YAML config file
 - [ ] Working APU
-- [ ] Configurable controls with YAML config file
 - [ ] Fix PPU rendering bugs that appear with certain games (Link's Awakening, Pac-Man known so far)
 
 ### Non-goals

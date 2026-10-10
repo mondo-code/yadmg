@@ -20,7 +20,7 @@ func main() {
 		log.Fatal("no ROM file provided")
 	}
 
-	lcd := &LCD{}
+	lcd := InitLCD()
 	gameboy, err := gb.InitGameboy(romPath, lcd)
 	if err != nil {
 		log.Fatal(err)

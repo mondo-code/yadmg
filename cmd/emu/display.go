@@ -8,12 +8,15 @@ const (
 	initialScale int32 = 3
 )
 
-// indices correspond to the bit in the input byte returned by Input()
-// 0 = A, 1 = B, 2 = select, 3 = start, 4 = right, 5 = left, 6 = up, 7 = down
-var keybinds = [8]int32{rl.KeyZ, rl.KeyX, rl.KeyRightShift, rl.KeyEnter, rl.KeyRight, rl.KeyLeft, rl.KeyUp, rl.KeyDown}
-
 type LCD struct {
 	texture rl.Texture2D
+	keymap [numButtons]int32
+}
+
+func InitLCD() *LCD {
+	lcd := &LCD{}
+	lcd.keymap = loadKeymap()
+	return lcd
 }
 
 func (lcd *LCD) Start(name string) {
@@ -57,7 +60,7 @@ func (lcd *LCD) Render(pixels *[160][144][3]uint8) {
 func (lcd *LCD) DoInput() byte {
 	var input byte
 
-	for i, n := range keybinds {
+	for i, n := range lcd.keymap {
 		if rl.IsKeyDown(n) {
 			input |= (1 << i)
 		}

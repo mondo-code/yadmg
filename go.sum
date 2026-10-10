@@ -4,5 +4,7 @@ github.com/gen2brain/raylib-go/raylib v0.60.1 h1:bZ9fRMOeIasK5Z9fNL8lnNVbCv9LevG
 github.com/gen2brain/raylib-go/raylib v0.60.1/go.mod h1:puAMU7Zcx6VJ6pcZSSs3gGFPyFvJuTwQlfm4KzeoXy8=
 github.com/jupiterrider/ffi v0.7.0 h1:RKsl6Ascal+3kyAqR5Qcbp83LceQMLc1VZbPfHWoNzs=
 github.com/jupiterrider/ffi v0.7.0/go.mod h1:9dauhpOfNqrqk28fxuu0kkdeFtT9Qr4vbfigiuIXN7c=
+go.yaml.in/yaml/v4 v4.0.0-rc.6 h1:1h7H1ohdUh93/FyE4YaDa1Zh64K6VVbjF4K6WUxMtH4=
+go.yaml.in/yaml/v4 v4.0.0-rc.6/go.mod h1:aZqd9kCMsGL7AuUv/m/PvWLdg5sjJsZ4oHDEnfPPfY0=
 golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa h1:QSyA8ishJCyT21kER9KwNt0b7BM3iRK4x9QXhjN5Fdk=
 golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa/go.mod h1:zeBbvyFKDaLwa7CH/zI8KXt7gTl14SF7sO08Pl5jBCM=

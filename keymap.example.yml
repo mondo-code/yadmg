@@ -1,0 +1,11 @@
+---
+buttonA: "Z"
+buttonB: "X"
+buttonSelect: "RightShift"
+buttonStart: "Enter"
+
+# arrow keys for dpad
+dpadRight: "Right"
+dpadLeft: "Left"
+dpadUp: "Up"
+dpadDown: "Down"
