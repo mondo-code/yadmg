@@ -1,9 +1,5 @@
 package gb
 
-import (
-	"math"
-)
-
 // relevant hardware registers
 const (
 	WaveRamBegin = 0xff30
@@ -77,20 +73,83 @@ var AudioRegisterMasks = [0x30]byte{
 	0xff,	// (ff2f)
 }
 
+const (
+	SC1LengthMax uint16 = 64
+	SC2LengthMax uint16 = 64
+	SC3LengthMax uint16 = 256 
+	SC4LengthMax uint16 = 64
+
+	FrameSequencerPeriod = 8192
+)
+
 type Sweep struct {
 	enabled bool
-	direction bool  // 0 == increasing, 1 == decreasing
+	decrease bool
 	shift byte
 	pace byte
 	timer byte
 	shadow uint16 
 }
 
+func (s *Sweep) clock() bool {
+	if s.enabled {
+		s.timer--
+		if s.timer == 0 {
+			s.timer = 8
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Sweep) calculate() uint16 {
+	change := s.shadow >> uint16(s.shift)
+	var freq uint16
+	if s.decrease {
+		freq = s.shadow - change
+	} else {
+		freq = s.shadow + change
+	}
+	return freq
+}
+
 type Envelope struct {
+	enabled bool
 	initVolume byte
 	volume byte
-	direction bool  // 0 == decreasing, 1 == increasing
+	decrease bool
+	timer byte
 	pace byte
+}
+
+func (e *Envelope) clock() {
+	if e.enabled && e.timer == 0 {
+		e.timer--
+		var volume byte
+		if e.decrease {
+			volume = e.volume - 1
+		} else {
+			volume = e.volume + 1
+		}
+		if 0 <= volume && volume <= 15 {
+			e.volume = volume
+		} else {
+			e.enabled = false
+		}
+	}
+}
+
+type LengthTimer struct {
+	enabled bool 	// NRx4 bit 6
+	counter uint16
+}
+
+func (l *LengthTimer) clock() bool {
+	if !l.enabled || l.counter == 0 {
+		return false
+	}
+	l.counter--
+	return l.counter == 0 
 }
 
 type SoundChannel1 struct {
@@ -98,50 +157,55 @@ type SoundChannel1 struct {
 	dacEnabled bool
 	env Envelope
 	sweep Sweep
-	frequency uint16
 	counter uint32
-	length	byte
-	lengthEnabled bool
+	length LengthTimer
 	waveDuty byte
 	waveDutyPos byte
 	period uint16  // 11-bit period value
-	timer byte
 	panLeft bool
 	panRight bool
 }
 
 func (sc1 *SoundChannel1) Trigger() {
 	sc1.enabled = sc1.dacEnabled 
-	if sc1.timer == 0 {
-		sc1.timer = 64
+	if sc1.length.counter == 0 {
+		sc1.length.counter = SC1LengthMax
 	}
-	sc1.counter = uint32(2048 - sc1.period * 4)
-	sc1.env.pace = 64
+	sc1.counter = uint32(2048 - sc1.period) * 4
 	sc1.env.volume = sc1.env.initVolume
+	sc1.env.timer = sc1.env.pace
+	if sc1.env.timer == 0 {
+		sc1.env.timer = 8
+	}
 	sc1.sweep.shadow = sc1.period
-	sc1.sweep.timer = 0x00
+	sc1.sweep.timer = sc1.sweep.pace 
+	if sc1.sweep.timer == 0 {
+		sc1.sweep.timer = 8
+	}
 
 	if sc1.sweep.pace != 0 || sc1.sweep.shift != 0 {
-		sc1.enabled = true
+		sc1.sweep.enabled = true
 	} else {
-		sc1.enabled = false
+		sc1.sweep.enabled = false
 	}
 
 	if sc1.sweep.shift != 0 {
-		// calculate next period to check for overflow
-		delta := sc1.sweep.shadow >> uint16(sc1.sweep.shift)
-		var newPeriod uint16
-		if sc1.sweep.direction {
-			newPeriod = sc1.sweep.shadow - delta 
-		} else {
-			newPeriod = sc1.sweep.shadow + delta 
-		}
-		if newPeriod > 0x7ff {
-			// result overflows, so disable channel and throw new period away
-			sc1.enabled = false
-			return
-		}
-		sc1.period = newPeriod
+		sc1.clockSweep()
+	}
+}
+
+func (sc1 *SoundChannel1) clockLength() {
+	if sc1.length.clock() {
+		sc1.length.counter = SC1LengthMax
+		sc1.enabled = false
+	}
+}
+
+func (sc1 *SoundChannel1) clockSweep() {
+	freq := sc1.sweep.calculate()
+	if freq > 0x7ff {
+		// result overflows, so disable channel and throw new period away
+		sc1.enabled = false
 	}
 }
 
@@ -155,14 +219,15 @@ func (sc1 *SoundChannel1) Sample() (leftOut, rightOut uint16) {
 	return leftOut, rightOut
 }
 
+// handle the length timer + probably more stuff later 
+func (sc1 *SoundChannel1) Step() {}
+
 type SoundChannel2 struct {
 	enabled bool
 	dacEnabled bool
 	env Envelope
-	frequency uint16
 	counter uint32
-	length	byte
-	lengthEnabled bool
+	length LengthTimer 
 	waveDuty byte
 	waveDutyPos byte
 	period uint16  // 11-bit period value
@@ -170,45 +235,108 @@ type SoundChannel2 struct {
 	panRight bool
 }
 
-func (sc2 *SoundChannel2) Trigger() {}
+func (sc2 *SoundChannel2) Trigger() {
+	sc2.enabled = sc2.dacEnabled
+	if sc2.length.counter == 0 {
+		sc2.length.counter = SC2LengthMax
+	}
+	sc2.counter = uint32(2048 - sc2.period) * 4
+	sc2.env.timer = sc2.env.pace
+	if sc2.env.timer == 0 {
+		sc2.env.timer = 8
+	}
+	sc2.env.volume = sc2.env.initVolume
+}
+
+func (sc2 *SoundChannel2) clockLength() {
+	if sc2.length.clock() {
+		sc2.length.counter = SC2LengthMax
+		sc2.enabled = false
+	}
+}
+
 func (sc2 *SoundChannel2) Sample() {}
+
+func (sc2 *SoundChannel2) Step() {}
 
 type SoundChannel3 struct {
 	enabled bool
 	dacEnabled bool
-	length uint16	
-	lengthEnabled bool
+	length LengthTimer
 	outputLevel byte  // NR32 bits 5 and 6
 	period uint16  // 11-bit period value
-	timer byte
+	timer uint16 
 	samplePos byte
 	panLeft bool
 	panRight bool
 }
 
-func (sc3 *SoundChannel3) Trigger() {}
+func (sc3 *SoundChannel3) Trigger() {
+	sc3.enabled = sc3.dacEnabled
+	if sc3.length.counter == 0 {
+		sc3.length.counter = SC3LengthMax 
+	}
+	sc3.samplePos = 0
+	sc3.timer = (2048 - sc3.period) * 2
+}
+
+func (sc3 *SoundChannel3) clockLength() {
+	if sc3.length.clock() {
+		sc3.length.counter = SC3LengthMax
+		sc3.enabled = false
+	}
+}
+
 func (sc3 *SoundChannel3) Sample() {}
+func (sc3 *SoundChannel3) Step() {}
 
 type SoundChannel4 struct {
 	enabled bool
 	dacEnabled bool
 	env Envelope
-	length	byte
-	lengthEnabled bool
+	length LengthTimer
 	clockDivider byte  // NR43 bits 0-2
 	LFSRWidth bool  // NR43 bit 3
 	clockShift byte  // NR43 bits 4-7
 	lfsr uint16
+	timer uint32 
 	panLeft bool
 	panRight bool
 }
 
-func (sc4 *SoundChannel4) Trigger() {}
+var noiseDivisors = [8]uint32{8, 16, 32, 48, 64, 80, 96, 112}
+func (sc4 *SoundChannel4) reloadTimer() {
+	sc4.timer = noiseDivisors[sc4.clockDivider] << sc4.clockShift
+}
+
+func (sc4 *SoundChannel4) Trigger() {
+	sc4.enabled = sc4.dacEnabled
+	if sc4.length.counter == 0 {
+		sc4.length.counter = SC4LengthMax
+	}
+	sc4.env.volume = sc4.env.initVolume
+	sc4.env.timer = sc4.env.pace
+	if sc4.env.timer == 0 {
+		sc4.env.timer = 8
+	}
+	sc4.reloadTimer()
+	sc4.lfsr = 0x7fff
+}
+
+func (sc4 *SoundChannel4) clockLength() {
+	if sc4.length.clock() {
+		sc4.length.counter = SC4LengthMax
+		sc4.enabled = false
+	}
+}
+
 func (sc4 *SoundChannel4) Sample() {}
+func (sc4 *SoundChannel4) Step() {}
 
 type APU struct {
 	enabled bool  // maps to NR52 register bit 7
-	cycles uint16
+	fsCycles uint16  // frame sequencer cycle count 
+	fsPhase byte  // next phase of the frame sequencer (0-7)
 
 	sc1 *SoundChannel1
 	sc2 *SoundChannel2
@@ -274,7 +402,7 @@ func (apu *APU) Read(addr uint16) byte {
 	switch {
 	case addr == NR10Addr:
 		val |= (apu.sc1.sweep.pace << 4)
-		val |= (boolToUint8(apu.sc1.sweep.direction) << 3)
+		val |= (boolToUint8(apu.sc1.sweep.decrease) << 3)
 		val |= apu.sc1.sweep.shift
 	case addr == NR11Addr:
 		// channel 1 length timer and duty cycle
@@ -282,22 +410,22 @@ func (apu *APU) Read(addr uint16) byte {
 		// initial length timer is write-only, so we bits 0-5 should read as 1s
 	case addr == NR12Addr:
 		// channel 1 volume and envelope
-		val = apu.sc1.env.initVolume<<4 | boolToUint8(apu.sc1.env.direction)<<3 | apu.sc1.env.pace
+		val = apu.sc1.env.initVolume<<4 | boolToUint8(apu.sc1.env.decrease)<<3 | apu.sc1.env.pace
 	// 0xff13 is write-only
 	case addr == NR14Addr:
 		// channel 1 period high and control
-		val |= (boolToUint8(apu.sc1.lengthEnabled) << 6)
+		val |= (boolToUint8(apu.sc1.length.enabled) << 6)
 		// trigger and period are write-only, set them with unused bits
 	case addr == NR21Addr:
 		// channel 2 length timer and duty cycle
 		val |= (apu.sc2.waveDuty << 6)
 	case addr == NR22Addr:
 		// channel 2 volume and envelope
-		val = apu.sc2.env.initVolume<<4 | boolToUint8(apu.sc2.env.direction)<<3 | apu.sc2.env.pace
+		val = apu.sc2.env.initVolume<<4 | boolToUint8(apu.sc2.env.decrease)<<3 | apu.sc2.env.pace
 	// 0xff18 is write-only because it's the channel 2 analog to 0xff13
 	case addr == NR24Addr:
 		// channel 2 period high and control
-		val |= (boolToUint8(apu.sc2.lengthEnabled) << 6)
+		val |= (boolToUint8(apu.sc2.length.enabled) << 6)
 	case addr == NR30Addr:
 		val |= (boolToUint8(apu.sc3.dacEnabled) << 7)
 	// 0xff1b is write-only
@@ -305,11 +433,11 @@ func (apu *APU) Read(addr uint16) byte {
 		val = apu.sc3.outputLevel
 	// 0xff1d is write-only
 	case addr == NR34Addr:
-		val |= boolToUint8(apu.sc3.lengthEnabled) << 6
+		val |= boolToUint8(apu.sc3.length.enabled) << 6
 	// 0xff20 is write-only
 	case addr == NR42Addr:
 		// channel 4 volume and envelope
-		val = apu.sc4.env.initVolume<<4 | boolToUint8(apu.sc4.env.direction)<<3 | apu.sc4.env.pace
+		val = apu.sc4.env.initVolume<<4 | boolToUint8(apu.sc4.env.decrease)<<3 | apu.sc4.env.pace
 	case addr == NR43Addr:
 		// channel 4 frequency and randomness
 		val |= (apu.sc4.clockShift << 4)
@@ -317,7 +445,7 @@ func (apu *APU) Read(addr uint16) byte {
 		val |= apu.sc4.clockDivider
 	case addr == NR44Addr:
 		// channel 4 control
-		val |= boolToUint8(apu.sc4.lengthEnabled) << 6
+		val |= boolToUint8(apu.sc4.length.enabled) << 6
 	// master control registers
 	case addr == NR50Addr:
 		// master volume and VIN panning
@@ -363,18 +491,18 @@ func (apu *APU) Write(addr uint16, val byte) {
 		// channel 1 sweep register
 		// if pace == 0, iterations are instantly disabled and will be reloaded when something else
 		// is written
-		pace := (val >> 4) & 0b111
-		direction := val & 0b1000
-		periodStep := val & 0b0111
-		apu.sc1.sweep.pace = pace
-		apu.sc1.sweep.direction = (direction == 0b0000_1000)
-		apu.sc1.sweep.shift = periodStep
+		sweepPace := (val >> 4) & 0b111
+		sweepDir := val & 0b1000
+		sweepShift := val & 0b0111
+		apu.sc1.sweep.pace = sweepPace
+		apu.sc1.sweep.decrease = (sweepDir == 0b0000_1000)
+		apu.sc1.sweep.shift = sweepShift 
 	case addr == NR11Addr:
 		// channel 1 length timer, duty cycle
 		initialLengthTimer := val & 0b0011_1111 
 		waveDuty := (val & 0b1100_0000) >> 6
 		apu.sc1.waveDuty = waveDuty
-		apu.sc1.length = 64 - initialLengthTimer
+		apu.sc1.length.counter = SC1LengthMax - uint16(initialLengthTimer)
 	case addr == NR12Addr:
 		// channel 1 volume and envelope
 		// if bits 3-7 are 0, turn off the DAC
@@ -383,7 +511,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc1.enabled = false
 		}
 		apu.sc1.env.pace = val & 0b0000_0111
-		apu.sc1.env.direction = (val & 0b0000_1000) == 0b0000_1000
+		apu.sc1.env.decrease = (val & 0b0000_1000) == 0b0000_1000
 		apu.sc1.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR13Addr:
 		// channel 1 period low
@@ -391,7 +519,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 	case addr == NR14Addr:
 		// channel 1 period high and control
 		periodHi := uint16(val & 0b0000_0111) << 8
-		apu.sc1.lengthEnabled = (val & 0b0100_0000) == 0b0100_0000
+		apu.sc1.length.enabled = (val & 0b0100_0000) == 0b0100_0000
 		apu.sc1.period = (apu.sc1.period & 0xff) | periodHi 
 		if val & 0b1000_0000 == 0b1000_0000 {
 			apu.sc1.Trigger()
@@ -401,7 +529,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		initialLengthTimer := val & 0b0011_1111 
 		waveDuty := (val & 0b1100_0000) >> 6
 		apu.sc2.waveDuty = waveDuty
-		apu.sc2.length = 64 - initialLengthTimer
+		apu.sc2.length.counter = SC2LengthMax - uint16(initialLengthTimer)
 	case addr == NR22Addr:
 		// channel 2 volume and envelope
 		// if bits 3-7 are 0, turn off the DAC
@@ -410,7 +538,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc2.enabled = false
 		}
 		apu.sc2.env.pace = val & 0b0000_0111
-		apu.sc2.env.direction = (val & 0b0000_1000) == 0b0000_1000
+		apu.sc2.env.decrease = (val & 0b0000_1000) == 0b0000_1000
 		apu.sc2.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR23Addr:
 		// channel 2 period low
@@ -418,7 +546,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 	case addr == NR24Addr:
 		// channel 2 period high and control
 		periodHi := uint16(val & 0b0000_0111) << 8
-		apu.sc2.lengthEnabled = (val & 0b0100_0000) == 0b0100_0000
+		apu.sc2.length.enabled = (val & 0b0100_0000) == 0b0100_0000
 		apu.sc2.period = (apu.sc2.period & 0xff) | periodHi 
 		if val & 0b1000_0000 == 0b1000_0000 {
 			apu.sc2.Trigger()
@@ -432,7 +560,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		}
 	case addr == NR31Addr:
 		// channel 3 length timer
-		apu.sc3.length = 256 - uint16(val)
+		apu.sc3.length.counter = SC3LengthMax - uint16(val)
 	case addr == NR32Addr:
 		// channel 3 output level
 		apu.sc3.outputLevel = (val & 0b0110_0000)
@@ -441,7 +569,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		apu.sc3.period = (apu.sc3.period & 0x700) | uint16(val)
 	case addr == NR34Addr:
 		// channel 3 period high and control
-		apu.sc3.lengthEnabled = bitEnabled(val, 6)
+		apu.sc3.length.enabled = bitEnabled(val, 6)
 		periodHi := uint16(val & 0x7) << 8
 		apu.sc3.period = (apu.sc3.period & 0xff) | periodHi
 		if bitEnabled(val, 7) {
@@ -449,7 +577,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		}
 	case addr == NR41Addr:
 		// channel 4 length timer
-		apu.sc4.length = 64 - (val & 0x3f)
+		apu.sc4.length.counter = SC4LengthMax - uint16((val & 0x3f))
 	case addr == NR42Addr:
 		// channel 4 volume and envelope
 		// if bits 3-7 are 0, turn off the DAC
@@ -458,7 +586,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc4.enabled = false
 		}
 		apu.sc4.env.pace = val & 0b0000_0111
-		apu.sc4.env.direction = bitEnabled(val, 3) 
+		apu.sc4.env.decrease = bitEnabled(val, 3) 
 		apu.sc4.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR43Addr:
 		// channel 4 frequency and randomness
@@ -467,7 +595,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		apu.sc4.clockDivider = val & 0x07
 	case addr == NR44Addr:
 		// channel 4 control
-		apu.sc4.lengthEnabled = bitEnabled(val, 6)
+		apu.sc4.length.enabled = bitEnabled(val, 6)
 		if bitEnabled(val, 7) {
 			apu.sc4.Trigger()
 		}
@@ -504,19 +632,38 @@ func (apu *APU) Write(addr uint16, val byte) {
 	}
 }
 
-func (apu *APU) Step(cycles uint16) {
-	apu.cycles += cycles
-
-	apu.sc1.Sample()
-	apu.sc2.Sample()
-	apu.sc3.Sample()
-	apu.sc4.Sample()
-
+func (apu *APU) clockChannelLengths() {
+	apu.sc1.clockLength()
+	apu.sc2.clockLength()
+	apu.sc3.clockLength()
+	apu.sc4.clockLength()
 }
 
-func calcFrequency(clockDivider, clockShift byte) float64 {
-	// leaving this detail out for now: shift being 14 or 15 stops the channel from being clocked entirely
-	divider := float64(clockDivider)
-	shift := float64(clockShift)
-	return (262144 / (divider * math.Pow(2, shift)))
+func (apu *APU) Step(cycles uint16) {
+	if !apu.enabled {
+		return
+	}
+
+	// frame sequencer stuff
+	apu.fsCycles += cycles
+	for apu.fsCycles >= FrameSequencerPeriod {
+		apu.fsCycles -= FrameSequencerPeriod
+		switch (apu.fsPhase) {
+		case 0, 4:
+			apu.clockChannelLengths()
+		case 2, 6:
+			apu.clockChannelLengths()
+			apu.sc1.clockSweep()
+		case 7:
+			apu.sc1.env.clock()
+			apu.sc2.env.clock()
+			apu.sc4.env.clock()
+		}
+		apu.fsPhase = (apu.fsPhase + 1) & 7
+	}
+
+	apu.sc1.Step()
+	apu.sc2.Step()
+	apu.sc3.Step()
+	apu.sc4.Step()
 }
