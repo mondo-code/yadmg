@@ -83,12 +83,13 @@ const (
 )
 
 type Sweep struct {
-	enabled  bool
-	decrease bool
-	shift    byte
-	pace     byte
-	timer    byte
-	shadow   uint16
+	enabled     bool
+	negate      bool
+	negateLatch bool // have we done a calculation in negate mode since last trigger?
+	shift       byte
+	pace        byte
+	timer       byte
+	shadow      uint16
 }
 
 func (s *Sweep) reloadTimer() {
@@ -111,8 +112,9 @@ func (s *Sweep) clock() bool {
 func (s *Sweep) calculate() uint16 {
 	change := s.shadow >> uint16(s.shift)
 	var freq uint16
-	if s.decrease {
+	if s.negate {
 		freq = s.shadow - change
+		s.negateLatch = true
 	} else {
 		freq = s.shadow + change
 	}
@@ -185,6 +187,7 @@ func (sc1 *SoundChannel1) Trigger() {
 	if sc1.env.timer == 0 {
 		sc1.env.timer = 8
 	}
+	sc1.sweep.negateLatch = false
 	sc1.sweep.shadow = sc1.period
 	sc1.sweep.reloadTimer()
 	sc1.sweep.enabled = (sc1.sweep.shift != 0 || sc1.sweep.pace != 0)
@@ -414,7 +417,7 @@ func (apu *APU) Read(addr uint16) byte {
 	switch {
 	case addr == NR10Addr:
 		val |= (apu.sc1.sweep.pace << 4)
-		val |= (boolToUint8(apu.sc1.sweep.decrease) << 3)
+		val |= (boolToUint8(apu.sc1.sweep.negate) << 3)
 		val |= apu.sc1.sweep.shift
 	case addr == NR11Addr:
 		// channel 1 length timer and duty cycle
@@ -507,8 +510,13 @@ func (apu *APU) Write(addr uint16, val byte) {
 		sweepDir := bitEnabled(val, 3)
 		sweepShift := val & 0b111
 
+		// exiting negate mode after calculation disables channel
+		if !sweepDir && apu.sc1.sweep.negateLatch {
+			apu.sc1.enabled = false
+		}
+
 		apu.sc1.sweep.pace = sweepPace
-		apu.sc1.sweep.decrease = sweepDir
+		apu.sc1.sweep.negate = sweepDir
 		apu.sc1.sweep.shift = sweepShift
 	case addr == NR11Addr:
 		// channel 1 length timer, duty cycle
