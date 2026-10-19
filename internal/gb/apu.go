@@ -91,13 +91,19 @@ type Sweep struct {
 	shadow   uint16
 }
 
+func (s *Sweep) reloadTimer() {
+	if s.pace == 0 {
+		s.timer = 8
+	} else {
+		s.timer = s.pace
+	}
+}
+
 func (s *Sweep) clock() bool {
-	if s.enabled {
-		s.timer--
-		if s.timer == 0 {
-			s.timer = 8
-			return true
-		}
+	s.timer--
+	if s.timer == 0 {
+		s.reloadTimer()
+		return true
 	}
 	return false
 }
@@ -123,19 +129,21 @@ type Envelope struct {
 }
 
 func (e *Envelope) clock() {
-	if e.enabled && e.timer == 0 {
-		e.timer--
-		var volume byte
-		if e.decrease {
-			volume = e.volume - 1
-		} else {
-			volume = e.volume + 1
-		}
-		if 0 <= volume && volume <= 15 {
-			e.volume = volume
-		} else {
-			e.enabled = false
-		}
+	if !e.enabled || e.pace == 0 {
+		return
+	}
+
+	e.timer--
+	var volume byte
+	if e.decrease {
+		volume = e.volume - 1
+	} else {
+		volume = e.volume + 1
+	}
+	if volume <= 15 {
+		e.volume = volume
+	} else {
+		e.enabled = false
 	}
 }
 
@@ -178,19 +186,13 @@ func (sc1 *SoundChannel1) Trigger() {
 		sc1.env.timer = 8
 	}
 	sc1.sweep.shadow = sc1.period
-	sc1.sweep.timer = sc1.sweep.pace
-	if sc1.sweep.timer == 0 {
-		sc1.sweep.timer = 8
-	}
-
-	if sc1.sweep.pace != 0 || sc1.sweep.shift != 0 {
-		sc1.sweep.enabled = true
-	} else {
-		sc1.sweep.enabled = false
-	}
+	sc1.sweep.reloadTimer()
+	sc1.sweep.enabled = (sc1.sweep.shift != 0 || sc1.sweep.pace != 0)
 
 	if sc1.sweep.shift != 0 {
-		sc1.clockSweep()
+		if sc1.sweep.calculate() > 0x7ff {
+			sc1.enabled = false
+		}
 	}
 }
 
@@ -202,10 +204,21 @@ func (sc1 *SoundChannel1) clockLength() {
 }
 
 func (sc1 *SoundChannel1) clockSweep() {
-	freq := sc1.sweep.calculate()
-	if freq > 0x7ff {
-		// result overflows, so disable channel and throw new period away
+	if !sc1.sweep.clock() || !sc1.sweep.enabled || sc1.sweep.pace == 0 {
+		return
+	}
+
+	newFreq := sc1.sweep.calculate()
+	if newFreq > 0x7ff {
 		sc1.enabled = false
+		return
+	}
+	if sc1.sweep.shift != 0 {
+		sc1.period = newFreq
+		sc1.sweep.shadow = newFreq
+		if sc1.sweep.calculate() > 0x7ff {
+			sc1.enabled = false
+		}
 	}
 }
 
@@ -352,10 +365,10 @@ type APU struct {
 func InitAPU() *APU {
 	apu := &APU{enabled: true}
 
-	apu.sc1 = &SoundChannel1{enabled: true, env: Envelope{}, sweep: Sweep{}}
-	apu.sc2 = &SoundChannel2{enabled: true}
-	apu.sc3 = &SoundChannel3{enabled: true}
-	apu.sc4 = &SoundChannel4{enabled: true, env: Envelope{}}
+	apu.sc1 = &SoundChannel1{enabled: true, dacEnabled: true, env: Envelope{}, sweep: Sweep{}}
+	apu.sc2 = &SoundChannel2{enabled: true, dacEnabled: true}
+	apu.sc3 = &SoundChannel3{enabled: true, dacEnabled: true}
+	apu.sc4 = &SoundChannel4{enabled: true, dacEnabled: true, env: Envelope{}}
 
 	// post-boot register values
 	apu.Write(NR10Addr, 0x80)
@@ -491,10 +504,11 @@ func (apu *APU) Write(addr uint16, val byte) {
 		// if pace == 0, iterations are instantly disabled and will be reloaded when something else
 		// is written
 		sweepPace := (val >> 4) & 0b111
-		sweepDir := val & 0b1000
-		sweepShift := val & 0b0111
+		sweepDir := bitEnabled(val, 3)
+		sweepShift := val & 0b111
+
 		apu.sc1.sweep.pace = sweepPace
-		apu.sc1.sweep.decrease = (sweepDir == 0b0000_1000)
+		apu.sc1.sweep.decrease = sweepDir
 		apu.sc1.sweep.shift = sweepShift
 	case addr == NR11Addr:
 		// channel 1 length timer, duty cycle
@@ -509,7 +523,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		if !apu.sc1.dacEnabled {
 			apu.sc1.enabled = false
 		}
-		apu.sc1.env.pace = val & 0b0000_0111
+		apu.sc1.env.pace = val & 0b111
 		apu.sc1.env.decrease = (val & 0b0000_1000) == 0b0000_1000
 		apu.sc1.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR13Addr:
@@ -517,7 +531,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		apu.sc1.period = (apu.sc1.period & 0x700) | uint16(val)
 	case addr == NR14Addr:
 		// channel 1 period high and control
-		periodHi := uint16(val&0b0000_0111) << 8
+		periodHi := uint16(val&0b111) << 8
 		apu.sc1.period = (apu.sc1.period & 0xff) | periodHi
 
 		sc1Length := &apu.sc1.length
@@ -554,8 +568,8 @@ func (apu *APU) Write(addr uint16, val byte) {
 		if !apu.sc2.dacEnabled {
 			apu.sc2.enabled = false
 		}
-		apu.sc2.env.pace = val & 0b0000_0111
-		apu.sc2.env.decrease = (val & 0b0000_1000) == 0b0000_1000
+		apu.sc2.env.pace = val & 0b0111
+		apu.sc2.env.decrease = bitEnabled(val, 3)
 		apu.sc2.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR23Addr:
 		// channel 2 period low
@@ -715,6 +729,9 @@ func (apu *APU) Step(cycles uint16) {
 	apu.fsCycles += cycles
 	for apu.fsCycles >= FrameSequencerPeriod {
 		apu.fsCycles -= FrameSequencerPeriod
+		// env clock: 256 Hz, phase 7 only
+		// sweep clock: 128 Hz, phases 2 and 6
+		// length clock: 64 Hz, phases 0, 2, 4, 6
 		switch apu.fsPhase {
 		case 0, 4:
 			apu.clockChannelLengths()
