@@ -399,6 +399,11 @@ func InitAPU() *APU {
 	return apu
 }
 
+func (apu *APU) powerOn() {
+	apu.fsPhase = 0
+	// more stuff here later: resetting wave duty position and sc4 sample buffer
+}
+
 func (apu *APU) powerOff() {
 	var addr uint16
 	for addr = NR10Addr; addr < NR52Addr; addr++ {
@@ -714,6 +719,8 @@ func (apu *APU) Write(addr uint16, val byte) {
 		on := bitEnabled(val, 7)
 		if !on && apu.enabled {
 			apu.powerOff()
+		} else if on && !apu.enabled {
+			apu.powerOn()
 		}
 		apu.enabled = on
 	case addr >= WaveRamBegin && addr <= WaveRamEnd:
