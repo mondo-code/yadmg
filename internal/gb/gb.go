@@ -12,6 +12,10 @@ type Screen interface {
 	DoInput() byte
 }
 
+type Speaker interface {
+	EmitAudio(sampleBuffer []float32)
+}
+
 type Gameboy struct {
 	CPU           *CPU
 	PPU           *PPU
@@ -21,6 +25,7 @@ type Gameboy struct {
 	TimerCycles   uint16
 	DivCycles     uint16
 	screen        Screen
+	speaker 	  Speaker
 	joypad        *Joypad
 	Framebuffer   *[FramebufferWidth][FramebufferHeight][3]uint8
 	paused        bool
@@ -28,9 +33,10 @@ type Gameboy struct {
 	screenCleared bool
 }
 
-func InitGameboy(romPath string, screen Screen) (*Gameboy, error) {
+func InitGameboy(romPath string, screen Screen, speaker Speaker) (*Gameboy, error) {
 	gb := &Gameboy{}
 	gb.screen = screen
+	gb.speaker = speaker
 	gb.CPU = InitCPU(gb)
 	mb := InitMemoryBus(gb)
 	gb.MemoryBus = mb
@@ -177,5 +183,6 @@ func (gb *Gameboy) Step(cycleBudget uint64) error {
 		gb.emuCycles += uint64(cycles)
 	}
 	gb.emuCycles -= cycleBudget
+	gb.speaker.EmitAudio(gb.APU.getSamples())
 	return nil
 }

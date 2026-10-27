@@ -20,8 +20,12 @@ func main() {
 		log.Fatal("no ROM file provided")
 	}
 
-	lcd := InitLCD()
-	gameboy, err := gb.InitGameboy(romPath, lcd)
+	// it makes sense to separate rendering and audio logic on the backend,
+	// but raylib handles both and it's very awkward to split its global state
+	// between two different types, so Frontend implements both Screen and Speaker
+	// and we hand it to the Gameboy struct for each of them
+	frontend := InitFrontend()
+	gameboy, err := gb.InitGameboy(romPath, frontend, frontend)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,16 +34,17 @@ func main() {
 		gameboy.LogOpcodes = true
 	}
 
-	lcd.Start("yadmg")
-	defer lcd.Close()
+	frontend.Start("yadmg")
+	defer frontend.Close()
 
 	ticker := time.NewTicker(4 * time.Millisecond)
 	last := time.Now()
 	for now := range ticker.C {
-		if !lcd.IsRunning() {
+		if !frontend.IsRunning() {
 			return
 		}
 
+		frontend.Update()
 		cycleBudget := uint64(now.Sub(last)) * gb.CPUSpeedHz / uint64(time.Second)
 		last = now
 		if err := gameboy.Step(cycleBudget); err != nil {

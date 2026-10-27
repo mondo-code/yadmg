@@ -80,7 +80,16 @@ const (
 	SC4LengthMax uint16 = 64
 
 	FrameSequencerPeriod = 8192
+	AudioSampleRate      = 44100
+	cpuCyclesPerSample   = float32(CPUSpeedHz) / AudioSampleRate
 )
+
+var dutyTable = [][]byte{
+	{0, 0, 0, 0, 0, 0, 0, 1}, // 12.5%
+	{1, 0, 0, 0, 0, 0, 0, 1}, // 25%
+	{1, 0, 0, 0, 0, 1, 1, 1}, // 50%
+	{0, 1, 1, 1, 1, 1, 1, 0}, // 75%
+}
 
 type Sweep struct {
 	enabled     bool
@@ -125,9 +134,22 @@ type Envelope struct {
 	enabled    bool
 	initVolume byte
 	volume     byte
-	decrease   bool
+	increase   bool
 	timer      byte
 	pace       byte
+}
+
+func (e *Envelope) reloadTimer() {
+	e.timer = e.pace
+	if e.timer == 0 {
+		e.timer = 8
+	}
+}
+
+func (e *Envelope) trigger() {
+	e.enabled = true
+	e.volume = e.initVolume
+	e.reloadTimer()
 }
 
 func (e *Envelope) clock() {
@@ -136,14 +158,15 @@ func (e *Envelope) clock() {
 	}
 
 	e.timer--
-	var volume byte
-	if e.decrease {
-		volume = e.volume - 1
-	} else {
-		volume = e.volume + 1
+	if e.timer != 0 {
+		return
 	}
-	if volume <= 15 {
-		e.volume = volume
+	e.reloadTimer()
+
+	if e.increase && e.volume < 15 {
+		e.volume += 1
+	} else if !e.increase && e.volume > 0 {
+		e.volume -= 1
 	} else {
 		e.enabled = false
 	}
@@ -167,7 +190,7 @@ type SoundChannel1 struct {
 	dacEnabled  bool
 	env         Envelope
 	sweep       Sweep
-	counter     uint32
+	freqTimer   int
 	length      LengthTimer
 	waveDuty    byte
 	waveDutyPos byte
@@ -181,12 +204,8 @@ func (sc1 *SoundChannel1) Trigger() {
 	if sc1.length.counter == 0 {
 		sc1.length.counter = SC1LengthMax
 	}
-	sc1.counter = uint32(2048-sc1.period) * 4
-	sc1.env.volume = sc1.env.initVolume
-	sc1.env.timer = sc1.env.pace
-	if sc1.env.timer == 0 {
-		sc1.env.timer = 8
-	}
+	sc1.freqTimer = int(2048-sc1.period) * 4
+	sc1.env.trigger()
 	sc1.sweep.negateLatch = false
 	sc1.sweep.shadow = sc1.period
 	sc1.sweep.reloadTimer()
@@ -225,23 +244,27 @@ func (sc1 *SoundChannel1) clockSweep() {
 	}
 }
 
-func (sc1 *SoundChannel1) Sample() (leftOut, rightOut uint16) {
-	if !sc1.enabled {
-		return 0, 0
+func (sc1 *SoundChannel1) step(cycles uint16) {
+	sc1.freqTimer -= int(cycles)
+	for sc1.freqTimer <= 0 {
+		reload := int(2048-sc1.period) * 4
+		sc1.freqTimer += reload
+		sc1.waveDutyPos = (sc1.waveDutyPos + 1) & 7
 	}
-
-	// return waveform samples
-
-	return leftOut, rightOut
 }
 
-func (sc1 *SoundChannel1) Step(cycles uint16) {}
+func (sc1 *SoundChannel1) output() byte {
+	if !sc1.enabled {
+		return 0
+	}
+	return dutyTable[sc1.waveDuty][sc1.waveDutyPos] * sc1.env.volume
+}
 
 type SoundChannel2 struct {
 	enabled     bool
 	dacEnabled  bool
 	env         Envelope
-	counter     uint32
+	freqTimer   int
 	length      LengthTimer
 	waveDuty    byte
 	waveDutyPos byte
@@ -255,12 +278,8 @@ func (sc2 *SoundChannel2) Trigger() {
 	if sc2.length.counter == 0 {
 		sc2.length.counter = SC2LengthMax
 	}
-	sc2.counter = uint32(2048-sc2.period) * 4
-	sc2.env.timer = sc2.env.pace
-	if sc2.env.timer == 0 {
-		sc2.env.timer = 8
-	}
-	sc2.env.volume = sc2.env.initVolume
+	sc2.freqTimer = int(2048-sc2.period) * 4
+	sc2.env.trigger()
 }
 
 func (sc2 *SoundChannel2) clockLength() {
@@ -270,8 +289,20 @@ func (sc2 *SoundChannel2) clockLength() {
 	}
 }
 
-func (sc2 *SoundChannel2) Sample()            {}
-func (sc2 *SoundChannel2) Step(cycles uint16) {}
+func (sc2 *SoundChannel2) output() byte {
+	if !sc2.enabled {
+		return 0
+	}
+	return dutyTable[sc2.waveDuty][sc2.waveDutyPos] * sc2.env.volume
+}
+func (sc2 *SoundChannel2) step(cycles uint16) {
+	sc2.freqTimer -= int(cycles)
+	for sc2.freqTimer <= 0 {
+		reload := int(2048-sc2.period) * 4
+		sc2.freqTimer += reload
+		sc2.waveDutyPos = (sc2.waveDutyPos + 1) & 7
+	}
+}
 
 type SoundChannel3 struct {
 	enabled     bool
@@ -279,7 +310,7 @@ type SoundChannel3 struct {
 	length      LengthTimer
 	outputLevel byte   // NR32 bits 5 and 6
 	period      uint16 // 11-bit period value
-	timer       uint16
+	freqTimer   int
 	samplePos   byte
 	panLeft     bool
 	panRight    bool
@@ -291,7 +322,7 @@ func (sc3 *SoundChannel3) Trigger() {
 		sc3.length.counter = SC3LengthMax
 	}
 	sc3.samplePos = 0
-	sc3.timer = (2048 - sc3.period) * 2
+	sc3.freqTimer = int(2048-sc3.period) * 2
 }
 
 func (sc3 *SoundChannel3) clockLength() {
@@ -301,8 +332,18 @@ func (sc3 *SoundChannel3) clockLength() {
 	}
 }
 
-func (sc3 *SoundChannel3) Sample()            {}
-func (sc3 *SoundChannel3) Step(cycles uint16) {}
+// func (sc3 *SoundChannel3) output() byte {
+//
+// }
+
+func (sc3 *SoundChannel3) step(cycles uint16) {
+	sc3.freqTimer -= int(cycles)
+	for sc3.freqTimer <= 0 {
+		reload := int(2048-sc3.period) * 2
+		sc3.freqTimer += reload
+		sc3.samplePos = (sc3.samplePos + 1) & 31
+	}
+}
 
 type SoundChannel4 struct {
 	enabled      bool
@@ -313,7 +354,7 @@ type SoundChannel4 struct {
 	LFSRWidth    bool // NR43 bit 3
 	clockShift   byte // NR43 bits 4-7
 	lfsr         uint16
-	timer        uint32
+	freqTimer    int
 	panLeft      bool
 	panRight     bool
 }
@@ -321,7 +362,7 @@ type SoundChannel4 struct {
 var noiseDivisors = [8]uint32{8, 16, 32, 48, 64, 80, 96, 112}
 
 func (sc4 *SoundChannel4) reloadTimer() {
-	sc4.timer = noiseDivisors[sc4.clockDivider] << sc4.clockShift
+	sc4.freqTimer = int(noiseDivisors[sc4.clockDivider] << sc4.clockShift)
 }
 
 func (sc4 *SoundChannel4) Trigger() {
@@ -329,11 +370,7 @@ func (sc4 *SoundChannel4) Trigger() {
 	if sc4.length.counter == 0 {
 		sc4.length.counter = SC4LengthMax
 	}
-	sc4.env.volume = sc4.env.initVolume
-	sc4.env.timer = sc4.env.pace
-	if sc4.env.timer == 0 {
-		sc4.env.timer = 8
-	}
+	sc4.env.trigger()
 	sc4.reloadTimer()
 	sc4.lfsr = 0x7fff
 }
@@ -345,8 +382,17 @@ func (sc4 *SoundChannel4) clockLength() {
 	}
 }
 
-func (sc4 *SoundChannel4) Sample()            {}
-func (sc4 *SoundChannel4) Step(cycles uint16) {}
+func (sc4 *SoundChannel4) step(cycles uint16) {
+	sc4.freqTimer -= int(cycles)
+	for sc4.freqTimer <= 0 {
+		sc4.reloadTimer()
+		// TODO: implement advance, logic for this is a little more involved than the others
+	}
+}
+
+func (sc4 *SoundChannel4) output() byte {
+	return (^byte(sc4.lfsr) & 1) * sc4.env.volume
+}
 
 type APU struct {
 	enabled  bool   // maps to NR52 register bit 7
@@ -358,11 +404,13 @@ type APU struct {
 	sc3 *SoundChannel3
 	sc4 *SoundChannel4
 
-	waveRAM     [16]byte
-	volumeLeft  byte
-	volumeRight byte
-	vinLeft     bool
-	vinRight    bool
+	waveRAM      [16]byte
+	volumeLeft   byte
+	volumeRight  byte
+	vinLeft      bool
+	vinRight     bool
+	cycleAcc     float32
+	sampleBuffer []float32
 }
 
 func InitAPU() *APU {
@@ -373,28 +421,30 @@ func InitAPU() *APU {
 	apu.sc3 = &SoundChannel3{enabled: true, dacEnabled: true}
 	apu.sc4 = &SoundChannel4{enabled: true, dacEnabled: true, env: Envelope{}}
 
+	apu.sampleBuffer = make([]float32, 0)
+
 	// post-boot register values
 	apu.Write(NR10Addr, 0x80)
-	apu.Write(NR11Addr, 0xbf)
+	apu.Write(NR11Addr, 0x80)
 	apu.Write(NR12Addr, 0xf3)
-	apu.Write(NR13Addr, 0xff)
-	apu.Write(NR14Addr, 0xbf)
-	apu.Write(NR21Addr, 0x3f)
+	apu.Write(NR13Addr, 0xc1)
+	apu.Write(NR14Addr, 0x07)
+	apu.Write(NR21Addr, 0x00)
 	apu.Write(NR22Addr, 0x00)
-	apu.Write(NR23Addr, 0xff)
-	apu.Write(NR24Addr, 0xbf)
-	apu.Write(NR30Addr, 0x7f)
-	apu.Write(NR31Addr, 0xff)
-	apu.Write(NR32Addr, 0x9f)
-	apu.Write(NR33Addr, 0xff)
-	apu.Write(NR34Addr, 0xbf)
-	apu.Write(NR41Addr, 0xff)
+	apu.Write(NR23Addr, 0x00)
+	apu.Write(NR24Addr, 0x00)
+	apu.Write(NR30Addr, 0x00)
+	apu.Write(NR31Addr, 0x00)
+	apu.Write(NR32Addr, 0x00)
+	apu.Write(NR33Addr, 0x00)
+	apu.Write(NR34Addr, 0x00)
+	apu.Write(NR41Addr, 0x00)
 	apu.Write(NR42Addr, 0x00)
 	apu.Write(NR43Addr, 0x00)
-	apu.Write(NR44Addr, 0xbf)
+	apu.Write(NR44Addr, 0x00)
 	apu.Write(NR50Addr, 0x77)
 	apu.Write(NR51Addr, 0xf3)
-	apu.Write(NR52Addr, 0xf1)
+	apu.Write(NR52Addr, 0x80)
 
 	return apu
 }
@@ -430,7 +480,7 @@ func (apu *APU) Read(addr uint16) byte {
 		// initial length timer is write-only, so we bits 0-5 should read as 1s
 	case addr == NR12Addr:
 		// channel 1 volume and envelope
-		val = apu.sc1.env.initVolume<<4 | boolToUint8(apu.sc1.env.decrease)<<3 | apu.sc1.env.pace
+		val = apu.sc1.env.initVolume<<4 | boolToUint8(apu.sc1.env.increase)<<3 | apu.sc1.env.pace
 	// 0xff13 is write-only
 	case addr == NR14Addr:
 		// channel 1 period high and control
@@ -441,7 +491,7 @@ func (apu *APU) Read(addr uint16) byte {
 		val |= (apu.sc2.waveDuty << 6)
 	case addr == NR22Addr:
 		// channel 2 volume and envelope
-		val = apu.sc2.env.initVolume<<4 | boolToUint8(apu.sc2.env.decrease)<<3 | apu.sc2.env.pace
+		val = apu.sc2.env.initVolume<<4 | boolToUint8(apu.sc2.env.increase)<<3 | apu.sc2.env.pace
 	// 0xff18 is write-only because it's the channel 2 analog to 0xff13
 	case addr == NR24Addr:
 		// channel 2 period high and control
@@ -457,7 +507,7 @@ func (apu *APU) Read(addr uint16) byte {
 	// 0xff20 is write-only
 	case addr == NR42Addr:
 		// channel 4 volume and envelope
-		val = apu.sc4.env.initVolume<<4 | boolToUint8(apu.sc4.env.decrease)<<3 | apu.sc4.env.pace
+		val = apu.sc4.env.initVolume<<4 | boolToUint8(apu.sc4.env.increase)<<3 | apu.sc4.env.pace
 	case addr == NR43Addr:
 		// channel 4 frequency and randomness
 		val |= (apu.sc4.clockShift << 4)
@@ -537,7 +587,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc1.enabled = false
 		}
 		apu.sc1.env.pace = val & 0b111
-		apu.sc1.env.decrease = (val & 0b0000_1000) == 0b0000_1000
+		apu.sc1.env.increase = (val & 0b0000_1000) == 0b0000_1000
 		apu.sc1.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR13Addr:
 		// channel 1 period low
@@ -582,7 +632,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc2.enabled = false
 		}
 		apu.sc2.env.pace = val & 0b0111
-		apu.sc2.env.decrease = bitEnabled(val, 3)
+		apu.sc2.env.increase = bitEnabled(val, 3)
 		apu.sc2.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR23Addr:
 		// channel 2 period low
@@ -664,7 +714,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc4.enabled = false
 		}
 		apu.sc4.env.pace = val & 0b0000_0111
-		apu.sc4.env.decrease = bitEnabled(val, 3)
+		apu.sc4.env.increase = bitEnabled(val, 3)
 		apu.sc4.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR43Addr:
 		// channel 4 frequency and randomness
@@ -735,12 +785,34 @@ func (apu *APU) clockChannelLengths() {
 	apu.sc4.clockLength()
 }
 
+// TODO: add sc3 and sc4
+func (apu *APU) mixSample() (left float32, right float32) {
+	sc1Sample := dacValue(apu.sc1.dacEnabled, apu.sc1.output())
+	sc2Sample := dacValue(apu.sc2.dacEnabled, apu.sc2.output())
+
+	if apu.sc1.panLeft {
+		left += sc1Sample
+	}
+	if apu.sc2.panLeft {
+		left += sc2Sample
+	}
+	if apu.sc1.panRight {
+		right += sc1Sample
+	}
+	if apu.sc2.panRight {
+		right += sc2Sample
+	}
+
+	left *= (float32(apu.volumeLeft+1) / 8.0) / 2
+	right *= (float32(apu.volumeRight+1) / 8.0) / 2
+
+	return left, right
+}
+
 func (apu *APU) Step(cycles uint16) {
 	if !apu.enabled {
 		return
 	}
-
-	// frame sequencer stuff
 	apu.fsCycles += cycles
 	for apu.fsCycles >= FrameSequencerPeriod {
 		apu.fsCycles -= FrameSequencerPeriod
@@ -761,8 +833,31 @@ func (apu *APU) Step(cycles uint16) {
 		apu.fsPhase = (apu.fsPhase + 1) & 7
 	}
 
-	apu.sc1.Step(cycles)
-	apu.sc2.Step(cycles)
-	apu.sc3.Step(cycles)
-	apu.sc4.Step(cycles)
+	apu.sc1.step(cycles)
+	apu.sc2.step(cycles)
+	apu.sc3.step(cycles)
+	apu.sc4.step(cycles)
+
+	apu.cycleAcc += float32(cycles)
+	for apu.cycleAcc >= cpuCyclesPerSample {
+		left, right := apu.mixSample()
+		apu.sampleBuffer = append(apu.sampleBuffer, left, right)
+		apu.cycleAcc -= cpuCyclesPerSample
+	}
+}
+
+func (apu *APU) getSamples() []float32 {
+	samples := make([]float32, len(apu.sampleBuffer))
+	copy(samples, apu.sampleBuffer)
+	apu.sampleBuffer = apu.sampleBuffer[:0]
+	return samples
+}
+
+// helpers for generating samples
+// produce value from DAC clamped between -1 and 1
+func dacValue(dacEnabled bool, digital byte) float32 {
+	if !dacEnabled {
+		return 0
+	}
+	return 1.0 - (float32(digital) / 7.5)
 }
