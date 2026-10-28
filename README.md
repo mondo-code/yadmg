@@ -24,7 +24,7 @@ yadmg supports configuring controls via a YAML file `keymap.yml`, located either
 
 ### Goals
 - [x] Configurable controls with YAML config file
-- [ ] Working APU
+- [x] Working APU
 - [ ] Fix PPU rendering bugs that appear with certain games (Link's Awakening, Pac-Man known so far)
 
 ### Non-goals
@@ -36,3 +36,4 @@ Thanks to these projects for making this much easier to develop:
 - [mooneye-gb](https://github.com/Gekkio/mooneye-gb): excellent reference for hardware-accurate implementations
 - [DMG-01](https://github.com/rylev/DMG-01): easy to read and understand to get an idea of what to do 
 - [gameboy-doctor](https://github.com/robert/gameboy-doctor): super useful debugging tool
+- [gearboy](https://github.com/drhelius/Gearboy): useful behavior reference
