@@ -79,8 +79,10 @@ const (
 	SC3LengthMax uint16 = 256
 	SC4LengthMax uint16 = 64
 
+	numSoundChannels     = 4
 	FrameSequencerPeriod = 8192
 	AudioSampleRate      = 44100
+	AudioOutputChannels  = 2
 	cpuCyclesPerSample   = float32(CPUSpeedHz) / AudioSampleRate
 )
 
@@ -314,6 +316,7 @@ type SoundChannel3 struct {
 	samplePos   byte
 	panLeft     bool
 	panRight    bool
+	waveRAM     [16]byte
 }
 
 func (sc3 *SoundChannel3) Trigger() {
@@ -332,9 +335,25 @@ func (sc3 *SoundChannel3) clockLength() {
 	}
 }
 
-// func (sc3 *SoundChannel3) output() byte {
-//
-// }
+func (sc3 *SoundChannel3) output() byte {
+	if !sc3.enabled || !sc3.dacEnabled {
+		return 0
+	}
+
+	// output level in quarters, indexed by NR32 bits 5 and 6
+	// 00 => mute, 01 => 100% (4/4), 10 => 25% (1/4), 11 => 50% (2/4)
+	var volumeShifts = []byte{0, 4, 1, 2}
+
+	// we do have to index wave RAM here, how?
+	sample := sc3.waveRAM[sc3.samplePos>>1]
+	if sc3.samplePos&1 == 0 {
+		sample >>= 4
+	} else {
+		sample &= 0x0f
+	}
+
+	return sample >> volumeShifts[sc3.outputLevel>>5]
+}
 
 func (sc3 *SoundChannel3) step(cycles uint16) {
 	sc3.freqTimer -= int(cycles)
@@ -362,7 +381,7 @@ type SoundChannel4 struct {
 var noiseDivisors = [8]uint32{8, 16, 32, 48, 64, 80, 96, 112}
 
 func (sc4 *SoundChannel4) reloadTimer() {
-	sc4.freqTimer = int(noiseDivisors[sc4.clockDivider] << sc4.clockShift)
+	sc4.freqTimer += int(noiseDivisors[sc4.clockDivider] << sc4.clockShift)
 }
 
 func (sc4 *SoundChannel4) Trigger() {
@@ -386,11 +405,20 @@ func (sc4 *SoundChannel4) step(cycles uint16) {
 	sc4.freqTimer -= int(cycles)
 	for sc4.freqTimer <= 0 {
 		sc4.reloadTimer()
-		// TODO: implement advance, logic for this is a little more involved than the others
+		if sc4.clockShift < 14 {
+			x := (sc4.lfsr ^ sc4.lfsr>>1) & 1
+			sc4.lfsr = (sc4.lfsr >> 1) | (x << 14)
+			if sc4.LFSRWidth {
+				sc4.lfsr = (sc4.lfsr &^ (1 << 6)) | (x << 6)
+			}
+		}
 	}
 }
 
 func (sc4 *SoundChannel4) output() byte {
+	if !sc4.enabled || !sc4.dacEnabled {
+		return 0
+	}
 	return (^byte(sc4.lfsr) & 1) * sc4.env.volume
 }
 
@@ -404,7 +432,6 @@ type APU struct {
 	sc3 *SoundChannel3
 	sc4 *SoundChannel4
 
-	waveRAM      [16]byte
 	volumeLeft   byte
 	volumeRight  byte
 	vinLeft      bool
@@ -451,7 +478,9 @@ func InitAPU() *APU {
 
 func (apu *APU) powerOn() {
 	apu.fsPhase = 0
-	// more stuff here later: resetting wave duty position and sc4 sample buffer
+	apu.fsCycles = 0
+	apu.sc1.waveDuty = 0
+	apu.sc1.waveDutyPos = 0
 }
 
 func (apu *APU) powerOff() {
@@ -544,7 +573,7 @@ func (apu *APU) Read(addr uint16) byte {
 		val |= (boolToUint8(apu.sc3.enabled) << 2)
 		val |= (boolToUint8(apu.sc4.enabled) << 3)
 	case addr >= WaveRamBegin && addr <= WaveRamEnd:
-		return apu.waveRAM[addr-WaveRamBegin]
+		return apu.sc3.waveRAM[addr-WaveRamBegin]
 	default:
 		return 0xff
 	}
@@ -774,7 +803,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		}
 		apu.enabled = on
 	case addr >= WaveRamBegin && addr <= WaveRamEnd:
-		apu.waveRAM[addr-WaveRamBegin] = val
+		apu.sc3.waveRAM[addr-WaveRamBegin] = val
 	}
 }
 
@@ -785,27 +814,28 @@ func (apu *APU) clockChannelLengths() {
 	apu.sc4.clockLength()
 }
 
-// TODO: add sc3 and sc4
 func (apu *APU) mixSample() (left float32, right float32) {
-	sc1Sample := dacValue(apu.sc1.dacEnabled, apu.sc1.output())
-	sc2Sample := dacValue(apu.sc2.dacEnabled, apu.sc2.output())
-
-	if apu.sc1.panLeft {
-		left += sc1Sample
-	}
-	if apu.sc2.panLeft {
-		left += sc2Sample
-	}
-	if apu.sc1.panRight {
-		right += sc1Sample
-	}
-	if apu.sc2.panRight {
-		right += sc2Sample
+	channels := [numSoundChannels]struct {
+		sample            float32
+		panLeft, panRight bool
+	}{
+		{dacValue(apu.sc1.dacEnabled, apu.sc1.output()), apu.sc1.panLeft, apu.sc1.panRight},
+		{dacValue(apu.sc2.dacEnabled, apu.sc2.output()), apu.sc2.panLeft, apu.sc2.panRight},
+		{dacValue(apu.sc3.dacEnabled, apu.sc3.output()), apu.sc3.panLeft, apu.sc3.panRight},
+		{dacValue(apu.sc4.dacEnabled, apu.sc4.output()), apu.sc4.panLeft, apu.sc4.panRight},
 	}
 
-	left *= (float32(apu.volumeLeft+1) / 8.0) / 2
-	right *= (float32(apu.volumeRight+1) / 8.0) / 2
+	for _, ch := range channels {
+		if ch.panLeft {
+			left += ch.sample
+		}
+		if ch.panRight {
+			right += ch.sample
+		}
+	}
 
+	left *= (float32(apu.volumeLeft+1) / 8.0) / numSoundChannels
+	right *= (float32(apu.volumeRight+1) / 8.0) / numSoundChannels
 	return left, right
 }
 

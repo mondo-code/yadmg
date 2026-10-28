@@ -1,21 +1,20 @@
 package main
 
 import (
+	"gbemu/internal/gb"
 	"slices"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
 const (
-	LCDWidth     int32 = 160
-	LCDHeight    int32 = 144
-	initialScale int32 = 3
+	LCDWidth     int32  = 160
+	LCDHeight    int32  = 144
+	initialScale int32  = 3
+	sampleSize   uint32 = 32
 
 	// audio constants
-	sampleRate  uint32 = 44100
-	sampleSize  uint32 = 32
-	numChannels uint32 = 2
-	chunkFrames        = 1024
+	chunkFrames = 1024
 )
 
 var gameboyScreenTint = rl.Color{R: 0xe0, G: 0xf8, B: 0xd0, A: 0xff}
@@ -33,7 +32,7 @@ func InitFrontend() *Frontend {
 	fe.keymap = loadKeymap()
 	rl.InitAudioDevice()
 	rl.SetAudioStreamBufferSizeDefault(chunkFrames)
-	fe.stream = rl.LoadAudioStream(sampleRate, sampleSize, numChannels)
+	fe.stream = rl.LoadAudioStream(gb.AudioSampleRate, sampleSize, gb.AudioOutputChannels)
 	fe.chunk = make([]float32, chunkFrames*2)
 	fe.audioQueue = make([]float32, 0)
 	return fe
