@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"gbemu/internal/gb"
+	"github.com/mondo-code/yadmg/internal/gb"
 	"log"
 	"time"
 )

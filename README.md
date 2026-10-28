@@ -3,12 +3,18 @@
 This isn't exactly a novel project, but it's one that I wanted to build to gain a little more familiarity with how systems actually work.
 Currently, this emulator passes blargg's cpu_instrs (the individual tests) and instr_timing.
 
-### Build
+## Install
+If you have Go installed, yadmg can be installed with the command ```go install github.com/mondo-code/yadmg/cmd/yadmg@latest```.
+
+### Build from source
+yadmg can also be built from source with the following commands, assuming you have both Git and Go:
 ```sh
-go build -o yadmg ./cmd/emu/
+git clone https://github.com/mondo-code/yadmg
+cd yadmg
+go build ./cmd/yadmg
 ```
 
-### Usage
+## Usage
 No boot ROM required, just pass in a cartridge ROM like so:
 ```sh
 yadmg rom.gb
@@ -19,18 +25,18 @@ Debug/other options:
     show debug output to track PC, SP and register values
 ```
 
-### Configuration
+## Configuration
 yadmg supports configuring controls via a YAML file `keymap.yml`, located either in the emulator's directory or in `$HOME/.config/yadmg`. An example configuration is included in the repository. All letter keys (make sure they're upper case in the config file) are mappable, as well as left shift, right shift, enter, and arrow keys. 
 
-### Goals
+## Goals
 - [x] Configurable controls with YAML config file
 - [x] Working APU
 - [ ] Fix PPU rendering bugs that appear with certain games (Link's Awakening, Pac-Man known so far)
 
-### Non-goals
+## Non-goals
 - CGB support. At least for now, I'm not particularly interested in implementing all of the disparate state and branching logic that comes with it.
 
-### Acknowledgements 
+## Acknowledgements 
 Thanks to these projects for making this much easier to develop:
 - [goboy](https://github.com/Humpheh/goboy): very valuable second opinion on Go implementations
 - [mooneye-gb](https://github.com/Gekkio/mooneye-gb): excellent reference for hardware-accurate implementations

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gbemu/internal/gb"
+	"github.com/mondo-code/yadmg/internal/gb"
 	"slices"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
