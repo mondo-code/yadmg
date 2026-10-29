@@ -25,16 +25,20 @@ type Frontend struct {
 	stream     rl.AudioStream
 	audioQueue []float32
 	chunk      []float32
+	muted      bool
 }
 
-func InitFrontend() *Frontend {
+func InitFrontend(mute bool) *Frontend {
 	fe := &Frontend{}
+	fe.muted = mute
 	fe.keymap = loadKeymap()
-	rl.InitAudioDevice()
-	rl.SetAudioStreamBufferSizeDefault(chunkFrames)
-	fe.stream = rl.LoadAudioStream(gb.AudioSampleRate, sampleSize, gb.AudioOutputChannels)
-	fe.chunk = make([]float32, chunkFrames*2)
-	fe.audioQueue = make([]float32, 0)
+	if !mute {
+		rl.InitAudioDevice()
+		rl.SetAudioStreamBufferSizeDefault(chunkFrames)
+		fe.stream = rl.LoadAudioStream(gb.AudioSampleRate, sampleSize, gb.AudioOutputChannels)
+		fe.chunk = make([]float32, chunkFrames*2)
+		fe.audioQueue = make([]float32, 0)
+	}
 	return fe
 }
 
@@ -91,6 +95,9 @@ func (fe *Frontend) DoInput() byte {
 
 // this just queues audio from the sample buffer that Gameboy gives us
 func (fe *Frontend) EmitAudio(sampleBuffer []float32) {
+	if fe.muted {
+		return
+	}
 	fe.audioQueue = append(fe.audioQueue, sampleBuffer...)
 	if limit := 4 * len(fe.chunk); len(fe.audioQueue) > limit {
 		// if emulator runs ahead of audio, drop oldest samples to bound latency
@@ -99,7 +106,10 @@ func (fe *Frontend) EmitAudio(sampleBuffer []float32) {
 	}
 }
 
-func (fe *Frontend) Update() {
+func (fe *Frontend) ProcessAudio() {
+	if fe.muted {
+		return
+	}
 	for rl.IsAudioStreamProcessed(fe.stream) {
 		n := copy(fe.chunk, fe.audioQueue)
 		fe.audioQueue = slices.Delete(fe.audioQueue, 0, n)
