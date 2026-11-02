@@ -98,6 +98,7 @@ type PPU struct {
 	stat         byte // maps to STAT register
 	winX         byte // maps to WX register at 0xff4b
 	winY         byte // maps to WY register at 0xff4a
+	windowLine   byte // internal window line counter; advances only on lines the window was drawn
 
 	lyEqualsLYC bool // ly == lyc coincidence
 	// pan docs says this is supposed to be here, will (probably) use it eventually
@@ -148,6 +149,7 @@ func (ppu *PPU) Step(cycles uint16) InterruptRequest {
 		}
 		ppu.cycles = 456
 		ppu.line = 0
+		ppu.windowLine = 0
 		ppu.setMode(HBlank)
 		return NoRequest
 	}
@@ -185,6 +187,7 @@ func (ppu *PPU) Step(cycles uint16) InterruptRequest {
 			if ppu.line == 154 {
 				ppu.setMode(OAMAccess)
 				ppu.line = 0
+				ppu.windowLine = 0
 				if ppu.OAMInterruptEnabled() {
 					request.add(LCDStatRequest)
 				}
@@ -237,64 +240,94 @@ func (ppu *PPU) setPixel(x, y, colorNum, palette byte, priority bool) {
 	}
 }
 
-func (ppu *PPU) DrawTiles(scanline byte) {
-	var inWindow bool
-	if bitEnabled(ppu.lcdc, WindowEnableBit) && ppu.winY <= ppu.line {
-		inWindow = true
+// tileRowAddress returns the VRAM address of row `row` (0-7) of the tile whose ID
+// is stored at mapAddr, honoring the LCDC bit 4 addressing mode.
+func (ppu *PPU) tileRowAddress(mapAddr uint16, row byte) uint16 {
+	tileID := ppu.ReadVRAM(mapAddr)
+	var base uint16 = 0x8000
+	if !bitEnabled(ppu.lcdc, BGWindowTileBit) {
+		// signed mode: IDs 0..127 -> 0x9000..0x97ff, IDs 128..255 (-128..-1) -> 0x8800..0x8fff.
+		// flipping the top bit turns the signed ID into an unsigned offset from 0x8800.
+		base = 0x8800
+		tileID ^= 0x80
+	}
+	return base + uint16(tileID)<<4 + uint16(row)<<1
+}
+
+// drawTileRow draws `count` pixels of one tile row, starting `col` pixels into
+// the tile, at screen position (x, y).
+func (ppu *PPU) drawTileRow(addr uint16, col, count, x, y byte) {
+	lo := ppu.ReadVRAM(addr)
+	hi := ppu.ReadVRAM(addr + 1)
+	for i := range count {
+		bit := 7 - (col + i)
+		colorNum := (hi>>bit&1)<<1 | lo>>bit&1
+		ppu.setTilePixel(x+i, y, colorNum, ppu.bgp)
+	}
+}
+
+// DrawBackground draws background pixels [0, endX) of the scanline. endX is
+// ScreenWidth when the window isn't visible on this line, else the window's left edge.
+func (ppu *PPU) DrawBackground(scanline, endX byte) {
+	mapBase := uint16(0x9800)
+	if bitEnabled(ppu.lcdc, BGTilemapBit) {
+		mapBase = 0x9c00
 	}
 
-	var tileData uint16 = 0x8800
-	var unsignedBytes bool
-	if bitEnabled(ppu.lcdc, BGWindowTileBit) {
-		tileData = 0x8000
-		unsignedBytes = true
+	mapY := scanline + ppu.scy
+	rowBase := mapBase + uint16(mapY>>3)<<5
+	tileRow := mapY & 7
+
+	var x byte
+	for x < endX {
+		mapX := x + ppu.scx
+		col := mapX & 7
+		run := min(8-col, endX-x) // clamp so the last tile can't run past endX
+
+		addr := ppu.tileRowAddress(rowBase+uint16(mapX>>3), tileRow)
+		ppu.drawTileRow(addr, col, run, x, scanline)
+		x += run
+	}
+}
+
+// DrawWindow draws window pixels [startX, ScreenWidth) of the scanline.
+func (ppu *PPU) DrawWindow(scanline, startX byte) {
+	mapBase := uint16(0x9800)
+	if bitEnabled(ppu.lcdc, WindowTilemapBit) {
+		mapBase = 0x9c00
 	}
 
-	var tileMapBit byte = BGTilemapBit
-	var backgroundMemory uint16 = 0x9800
-	if inWindow {
-		tileMapBit = WindowTilemapBit
+	mapY := ppu.windowLine
+	rowBase := mapBase + uint16(mapY>>3)<<5
+	tileRow := mapY & 7
+
+	x := startX
+	for x < ScreenWidth {
+		// winX holds WX-7 wrapped to a byte, so when WX < 7 (left edge offscreen)
+		// this subtraction wraps to the right positive offset into the window.
+		mapX := x - ppu.winX
+		col := mapX & 7
+		run := min(8-col, ScreenWidth-x)
+
+		addr := ppu.tileRowAddress(rowBase+uint16(mapX>>3), tileRow)
+		ppu.drawTileRow(addr, col, run, x, scanline)
+		x += run
 	}
-	if bitEnabled(ppu.lcdc, tileMapBit) {
-		backgroundMemory = 0x9c00
+}
+
+// windowStartX returns the window's first visible x on this line, or ScreenWidth if none.
+func (ppu *PPU) windowStartX() byte {
+	if !bitEnabled(ppu.lcdc, WindowEnableBit) || ppu.line < ppu.winY {
+		return ScreenWidth
 	}
-
-	var yPos byte
-	if !inWindow {
-		yPos = ppu.scy + scanline
-	} else {
-		yPos = scanline - ppu.winY
+	wx := ppu.winX + 7 // recover the raw WX register value
+	switch {
+	case wx < 7:
+		return 0
+	case wx > 166:
+		return ScreenWidth
 	}
-
-	var tileRow = uint16(yPos/8) * 32
-
-	for pixel := range byte(160) {
-		x := pixel + ppu.scx
-		if inWindow && pixel >= ppu.winX {
-			x = pixel - ppu.winX
-		}
-
-		tileCol := uint16(x / 8)
-		tileAddr := backgroundMemory + tileRow + tileCol
-
-		tileLocation := tileData
-		var tileNum int16
-		if unsignedBytes {
-			tileNum = int16(ppu.ReadVRAM(tileAddr))
-			tileLocation += uint16(tileNum * 16)
-		} else {
-			tileNum = int16(int8(ppu.ReadVRAM(tileAddr)))
-			tileLocation = uint16(int32(tileLocation) + int32((tileNum+128)*16))
-		}
-
-		line := (yPos % 8) * 2
-		tileData1 := ppu.ReadVRAM(tileLocation + uint16(line))
-		tileData2 := ppu.ReadVRAM(tileLocation + uint16(line) + 1)
-
-		colorBit := 7 - (x % 8)
-		colorNum := ((tileData2>>colorBit)&1)<<1 | (tileData1>>colorBit)&1
-		ppu.setTilePixel(pixel, scanline, colorNum, ppu.bgp)
-	}
+	return wx - 7
 }
 
 func (ppu *PPU) DrawSprites() {
@@ -381,7 +414,12 @@ func (ppu *PPU) DrawSprites() {
 
 func (ppu *PPU) DrawScanline() {
 	if bitEnabled(ppu.lcdc, BGWindowEnableBit) {
-		ppu.DrawTiles(ppu.line)
+		winStart := ppu.windowStartX()
+		ppu.DrawBackground(ppu.line, winStart)
+		if winStart < ScreenWidth {
+			ppu.DrawWindow(ppu.line, winStart)
+			ppu.windowLine++
+		}
 	}
 
 	if bitEnabled(ppu.lcdc, OBJEnableBit) {
