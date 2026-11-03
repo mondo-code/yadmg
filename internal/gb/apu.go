@@ -1,5 +1,7 @@
 package gb
 
+import "math"
+
 // relevant hardware registers
 const (
 	WaveRamBegin = 0xff30
@@ -85,6 +87,9 @@ const (
 	AudioOutputChannels  = 2
 	cpuCyclesPerSample   = float32(CPUSpeedHz) / AudioSampleRate
 )
+
+// given our constants, this evaluates to about 0.996
+var highPassChargeFactor = float32(math.Pow(0.999958, float64(cpuCyclesPerSample)))
 
 var dutyTable = [][]byte{
 	{0, 0, 0, 0, 0, 0, 0, 1}, // 12.5%
@@ -432,12 +437,14 @@ type APU struct {
 	sc3 *SoundChannel3
 	sc4 *SoundChannel4
 
-	volumeLeft   byte
-	volumeRight  byte
-	vinLeft      bool
-	vinRight     bool
-	cycleAcc     float32
-	sampleBuffer []float32
+	volumeLeft     byte
+	volumeRight    byte
+	vinLeft        bool
+	vinRight       bool
+	cycleAcc       float32
+	sampleBuffer   []float32
+	leftCapacitor  float32
+	rightCapacitor float32
 }
 
 func InitAPU() *APU {
@@ -836,6 +843,8 @@ func (apu *APU) mixSample() (left float32, right float32) {
 
 	left *= (float32(apu.volumeLeft+1) / 8.0) / numSoundChannels
 	right *= (float32(apu.volumeRight+1) / 8.0) / numSoundChannels
+	left = apu.highPassFilter(left, &apu.leftCapacitor)
+	right = apu.highPassFilter(right, &apu.rightCapacitor)
 	return left, right
 }
 
@@ -890,4 +899,16 @@ func dacValue(dacEnabled bool, digital byte) float32 {
 		return 0
 	}
 	return 1.0 - (float32(digital) / 7.5)
+}
+
+func (apu *APU) anyDacEnabled() bool {
+	return apu.sc1.dacEnabled || apu.sc2.dacEnabled || apu.sc3.dacEnabled || apu.sc4.dacEnabled
+}
+
+func (apu *APU) highPassFilter(in float32, capacitor *float32) (out float32) {
+	if apu.anyDacEnabled() {
+		out = in - *capacitor
+		*capacitor = in - out*highPassChargeFactor
+	}
+	return out
 }
