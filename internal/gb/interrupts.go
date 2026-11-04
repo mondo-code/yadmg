@@ -16,53 +16,21 @@ const (
 	JoypadAddr  = 0x60
 )
 
-func (mb *MemoryBus) LCDStatInterruptEnabled() bool {
-	return bitEnabled(mb.IE, 1)
+func (mb *MemoryBus) setVBlank() {
+	setBit(&mb.regIF, 0)
 }
 
-func (mb *MemoryBus) TimerInterruptEnabled() bool {
-	return bitEnabled(mb.IE, 2)
-}
-
-func (mb *MemoryBus) SerialInterruptEnabled() bool {
-	return bitEnabled(mb.IE, 3)
-}
-
-func (mb *MemoryBus) JoypadInterruptEnabled() bool {
-	return bitEnabled(mb.IE, 4)
-}
-
-func (mb *MemoryBus) VBlankRequested() bool {
-	return bitEnabled(mb.IF, 0)
-}
-
-func (mb *MemoryBus) SetVBlank() {
-	SetBit(&mb.IF, 0)
-}
-
-func (mb *MemoryBus) SetLCD() {
-	SetBit(&mb.IF, 1)
-}
-
-func (mb *MemoryBus) SetTimer() {
-	SetBit(&mb.IF, 2)
-}
-
-func (mb *MemoryBus) SetSerial() {
-	SetBit(&mb.IF, 3)
-}
-
-func (mb *MemoryBus) SetJoypad() {
-	SetBit(&mb.IF, 4)
+func (mb *MemoryBus) setLCD() {
+	setBit(&mb.regIF, 1)
 }
 
 func (cpu *CPU) jumpToISRAddress(addr uint16) {
-	cpu.IME = false
-	cpu.push(cpu.PC)
-	cpu.PC = addr
+	cpu.interruptsEnabled = false
+	cpu.push(cpu.pc)
+	cpu.pc = addr
 }
 
-func (mb *MemoryBus) RequestInterrupt(interrupt byte) {
-	req := mb.IF | interrupt
-	mb.WriteToAddress(0xff0f, req)
+func (mb *MemoryBus) requestInterrupt(interrupt byte) {
+	req := mb.regIF | interrupt
+	mb.writeToAddress(0xff0f, req)
 }

@@ -39,177 +39,177 @@ const (
 	HighRAMEnd   uint16 = 0xfffe
 
 	AudioBegin uint16 = 0xff10
-	AudioEnd uint16 = 0xff26
+	AudioEnd   uint16 = 0xff26
 
 	// relevant hardware addresses
-	JoypadAddress     uint16 = 0xff00
-	DIVAddress        uint16 = 0xff04
-	TIMAAddress       uint16 = 0xff05
-	TMAAddress        uint16 = 0xff06
-	TACAddress        uint16 = 0xff07
-	IFAddress         uint16 = 0xff0f
-	LCDControlAddress uint16 = 0xff40
-	STATAddress       uint16 = 0xff41
-	SCYAddress        uint16 = 0xff42
-	SCXAddress        uint16 = 0xff43
-	LYAddress         uint16 = 0xff44
-	LYCAddress        uint16 = 0xff45
-	OAMDMAAddress     uint16 = 0xff46
-	BGPAddress        uint16 = 0xff47
-	WYAddress         uint16 = 0xff4a
-	WXAddress         uint16 = 0xff4b
-	IEAddress         uint16 = 0xffff
+	joypadAddress     uint16 = 0xff00
+	divAddress        uint16 = 0xff04
+	timaAddress       uint16 = 0xff05
+	tmaAddress        uint16 = 0xff06
+	tacAddress        uint16 = 0xff07
+	ifAddress         uint16 = 0xff0f
+	lcdControlAddress uint16 = 0xff40
+	statAddress       uint16 = 0xff41
+	scyAddress        uint16 = 0xff42
+	scxAddress        uint16 = 0xff43
+	lyAddress         uint16 = 0xff44
+	lycAddress        uint16 = 0xff45
+	oamDMAAddress     uint16 = 0xff46
+	bgpAddress        uint16 = 0xff47
+	wyAddress         uint16 = 0xff4a
+	wxAddress         uint16 = 0xff4b
+	ieAddress         uint16 = 0xffff
 )
 
 type MemoryBus struct {
 	gb     *Gameboy
-	Cart   *Cartridge
+	cart   *Cartridge
 	memory [0x10000]byte
-	IF     byte
-	IE     byte
+	regIF  byte
+	regIE  byte
 }
 
-func InitMemoryBus(gb *Gameboy) *MemoryBus {
+func initMemoryBus(gb *Gameboy) *MemoryBus {
 	mb := &MemoryBus{
 		gb: gb,
 	}
 	return mb
 }
 
-func (mb *MemoryBus) Step(cycles uint16) {
+func (mb *MemoryBus) step(cycles uint16) {
 	// have GPU step and communicate VBlank and LCD status, trigger flags for
 	// each if it comes back positive
-	req := mb.gb.PPU.Step(cycles)
+	req := mb.gb.ppu.step(cycles)
 	switch req {
-	case VBlankRequest:
-		mb.SetVBlank()
+	case vblankRequest:
+		mb.setVBlank()
 		screen := mb.gb.screen
-		screen.Render(mb.gb.Framebuffer)
-		if mb.gb.joypad.Update(screen.DoInput()) {
-			mb.RequestInterrupt(JoypadFlag)
+		screen.Render(mb.gb.framebuffer)
+		if mb.gb.joypad.update(screen.DoInput()) {
+			mb.requestInterrupt(JoypadFlag)
 		}
-	case LCDStatRequest:
-		mb.SetLCD()
-	case BothRequest:
-		mb.SetVBlank()
-		mb.SetLCD()
+	case lcdStatRequest:
+		mb.setLCD()
+	case bothRequest:
+		mb.setVBlank()
+		mb.setLCD()
 		screen := mb.gb.screen
-		screen.Render(mb.gb.Framebuffer)
-		if mb.gb.joypad.Update(screen.DoInput()) {
-			mb.RequestInterrupt(JoypadFlag)
+		screen.Render(mb.gb.framebuffer)
+		if mb.gb.joypad.update(screen.DoInput()) {
+			mb.requestInterrupt(JoypadFlag)
 		}
 	}
-	mb.Cart.Step()
+	mb.cart.step()
 }
 
-func (mb *MemoryBus) DMATransfer(val byte) {
+func (mb *MemoryBus) dmaTransfer(val byte) {
 	addr := uint16(val) << 8
 
 	for i := range uint16(0xa0) {
-		oamData := mb.ReadAddress(addr + i)
+		oamData := mb.readAddress(addr + i)
 		mb.memory[OAMBegin+i] = oamData
 	}
 }
 
-func (mb *MemoryBus) LoadCartridge(romPath string) (int, error) {
-	cart, err := InitCartFromFile(romPath)
+func (mb *MemoryBus) loadCartridge(romPath string) (int, error) {
+	cart, err := initCartFromFile(romPath)
 	if err != nil {
 		return 0, err
 	}
-	mb.Cart = cart
-	return cart.mbc.RomSize(), nil
+	mb.cart = cart
+	return cart.mbc.romSize(), nil
 }
 
-func (mb *MemoryBus) ReadAddress(addr uint16) byte {
+func (mb *MemoryBus) readAddress(addr uint16) byte {
 	if int(addr) >= len(mb.memory) {
 		panic(fmt.Sprintf("out of bounds read: 0x%04X\n", addr))
 	}
 
 	switch {
 	case addr <= RomBankNEnd, addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
-		return mb.Cart.Read(addr)
-	case addr == JoypadAddress:
-		return mb.gb.joypad.Read()
-	case addr == IEAddress:
-		return mb.IE
-	case addr == IFAddress:
-		return mb.IF
-	case addr == LYAddress:
-		return mb.gb.PPU.line
-	case addr == LYCAddress:
-		return mb.gb.PPU.lyc
-	case addr == SCXAddress:
-		return mb.gb.PPU.scx
-	case addr == SCYAddress:
-		return mb.gb.PPU.scy
-	case addr == BGPAddress:
-		return mb.gb.PPU.bgp
-	case addr == LCDControlAddress:
-		return mb.gb.PPU.lcdc
-	case addr == STATAddress:
-		return mb.gb.PPU.stat
-	case addr == WYAddress:
-		return mb.gb.PPU.winY
-	case addr == WXAddress:
-		return mb.gb.PPU.winX + 7
-	case addr >= VRAMBegin && addr <= VRAMEnd:
-		return mb.gb.PPU.ReadVRAM(addr)
+		return mb.cart.read(addr)
+	case addr == joypadAddress:
+		return mb.gb.joypad.read()
+	case addr == ieAddress:
+		return mb.regIE | 0xe0
+	case addr == ifAddress:
+		return mb.regIF | 0xe0
+	case addr == lyAddress:
+		return mb.gb.ppu.line
+	case addr == lycAddress:
+		return mb.gb.ppu.lyc
+	case addr == scxAddress:
+		return mb.gb.ppu.scx
+	case addr == scyAddress:
+		return mb.gb.ppu.scy
+	case addr == bgpAddress:
+		return mb.gb.ppu.bgp
+	case addr == lcdControlAddress:
+		return mb.gb.ppu.lcdc
+	case addr == statAddress:
+		return mb.gb.ppu.stat
+	case addr == wyAddress:
+		return mb.gb.ppu.winY
+	case addr == wxAddress:
+		return mb.gb.ppu.winX + 7
+	case addr >= vramBegin && addr <= vramEnd:
+		return mb.gb.ppu.readVRAM(addr)
 	case addr >= AudioBegin && addr <= WaveRamEnd:
-		return mb.gb.APU.Read(addr)
+		return mb.gb.apu.read(addr)
 	}
 	return mb.memory[addr]
 }
 
-func (mb *MemoryBus) WriteToAddress(addr uint16, val byte) {
+func (mb *MemoryBus) writeToAddress(addr uint16, val byte) {
 	switch {
 	case addr <= RomBankNEnd, addr >= CartridgeRamBegin && addr <= CartridgeRamEnd:
-		mb.Cart.Write(addr, val)
-	case addr == OAMDMAAddress:
-		mb.DMATransfer(val)
-	case addr == JoypadAddress:
-		mb.gb.joypad.Write(val)
-	case addr == DIVAddress:
+		mb.cart.write(addr, val)
+	case addr == oamDMAAddress:
+		mb.dmaTransfer(val)
+	case addr == joypadAddress:
+		mb.gb.joypad.write(val)
+	case addr == divAddress:
 		// any write to this resets div to $00, and it's reset when STOP is executed
-		mb.memory[DIVAddress] = 0
-	case addr == TACAddress:
+		mb.memory[divAddress] = 0
+	case addr == tacAddress:
 		// reset timer cycle counter on frequency change
-		oldFreq := mb.gb.GetTimerFreq()
-		mb.memory[TACAddress] = val
-		newFreq := mb.gb.GetTimerFreq()
+		oldFreq := mb.gb.getTimerFreq()
+		mb.memory[tacAddress] = val
+		newFreq := mb.gb.getTimerFreq()
 		if oldFreq != newFreq {
-			mb.gb.TimerCycles = 0
+			mb.gb.timerCycles = 0
 		}
-	case addr == IEAddress:
-		mb.IE = val
-	case addr == IFAddress:
-		mb.IF = val
-	case addr == LYAddress:
-		mb.gb.PPU.line = 0
-	case addr == LYCAddress:
-		mb.gb.PPU.WriteLYC(val)
-	case addr == SCXAddress:
-		mb.gb.PPU.scx = val
-	case addr == SCYAddress:
-		mb.gb.PPU.scy = val
-	case addr == LCDControlAddress:
-		mb.gb.PPU.lcdc = val
-	case addr == STATAddress:
+	case addr == ieAddress:
+		mb.regIE = val
+	case addr == ifAddress:
+		mb.regIF = val
+	case addr == lyAddress:
+		mb.gb.ppu.line = 0
+	case addr == lycAddress:
+		mb.gb.ppu.writeLYC(val)
+	case addr == scxAddress:
+		mb.gb.ppu.scx = val
+	case addr == scyAddress:
+		mb.gb.ppu.scy = val
+	case addr == lcdControlAddress:
+		mb.gb.ppu.lcdc = val
+	case addr == statAddress:
 		// bits 3 through 6 of STAT are read/write, the rest are either unused
 		// or read only
-		ppu := mb.gb.PPU
+		ppu := mb.gb.ppu
 		ppu.stat = (ppu.stat & 0x07) | (val & 0x78)
-	case addr == BGPAddress:
-		mb.gb.PPU.bgp = val
-	case addr == WXAddress:
+	case addr == bgpAddress:
+		mb.gb.ppu.bgp = val
+	case addr == wxAddress:
 		// WX is window X position + 7, store with the offset upfront for ergonomics
 		// while also preventing underflow
-		mb.gb.PPU.winX = byte(int16(val) - 7)
-	case addr == WYAddress:
-		mb.gb.PPU.winY = val
-	case addr >= VRAMBegin && addr <= VRAMEnd:
-		mb.gb.PPU.WriteVRAM(addr, val)
+		mb.gb.ppu.winX = byte(int16(val) - 7)
+	case addr == wyAddress:
+		mb.gb.ppu.winY = val
+	case addr >= vramBegin && addr <= vramEnd:
+		mb.gb.ppu.writeVRAM(addr, val)
 	case addr >= AudioBegin && addr <= WaveRamEnd:
-		mb.gb.APU.Write(addr, val)
+		mb.gb.apu.write(addr, val)
 	default:
 		mb.memory[addr] = val
 	}

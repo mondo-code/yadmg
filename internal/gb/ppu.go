@@ -1,11 +1,11 @@
 package gb
 
 const (
-	VRAMBegin uint16 = 0x8000
-	VRAMEnd   uint16 = 0x9fff
-	VRAMSize  uint16 = VRAMEnd - VRAMBegin + 1
+	vramBegin uint16 = 0x8000
+	vramEnd   uint16 = 0x9fff
+	vramSize  uint16 = vramEnd - vramBegin + 1
 
-	TilesSize int = 384
+	tilesSize int = 384
 
 	ScreenHeight = 144
 	ScreenWidth  = 160
@@ -23,23 +23,23 @@ const (
 // relevant hardware register bits
 // LCDC
 const (
-	BGWindowEnableBit byte = iota
-	OBJEnableBit
-	OBJSizeBit
-	BGTilemapBit
-	BGWindowTileBit
-	WindowEnableBit
-	WindowTilemapBit
-	LCDEnableBit
+	bgWindowEnableBit byte = iota
+	objEnableBit
+	objSizeBit
+	bgTilemapBit
+	bgWindowTileBit
+	windowEnableBit
+	windowTilemapBit
+	lcdEnableBit
 )
 
 // STAT
 const (
-	CoincidenceBit byte = iota + 2
-	Mode0IntSelectBit
-	Mode1IntSelectBit
-	Mode2IntSelectBit
-	LYCIntSelectBit
+	coincidenceBit byte = iota + 2
+	mode0IntSelectBit
+	mode1IntSelectBit
+	mode2IntSelectBit
+	lycIntSelectBit
 )
 
 type Tile [8][8]TilePixelValue
@@ -54,41 +54,42 @@ func emptyTile() Tile {
 	return t
 }
 
-type InterruptRequest int
+type interruptRequest int
 
 const (
-	NoRequest InterruptRequest = iota
-	VBlankRequest
-	LCDStatRequest
-	BothRequest
+	noRequest interruptRequest = iota
+	vblankRequest
+	lcdStatRequest
+	bothRequest
 )
 
-func (r *InterruptRequest) add(other InterruptRequest) {
+func (r *interruptRequest) add(other interruptRequest) {
 	switch {
-	case *r == NoRequest:
+	case *r == noRequest:
 		*r = other
-	case *r == VBlankRequest && other == LCDStatRequest:
-		*r = BothRequest
-	case *r == LCDStatRequest && other == VBlankRequest:
-		*r = BothRequest
+	case *r == vblankRequest && other == lcdStatRequest:
+		*r = bothRequest
+	case *r == lcdStatRequest && other == vblankRequest:
+		*r = bothRequest
 	}
 }
 
-type PPUMode int
+type ppuMode int
+
 const (
-	HBlank PPUMode = iota
-	VBlank
-	OAMAccess
-	VRAMAccess
+	hblank ppuMode = iota
+	vblank
+	oamAccess
+	vramAccess
 )
 
 type PPU struct {
 	gb           *Gameboy
-	vram         [VRAMSize]byte
-	tileSet      [TilesSize]Tile
+	vram         [vramSize]byte
+	tileSet      [tilesSize]Tile
 	tileScanline [ScreenWidth]byte
 	cycles       uint16
-	mode         PPUMode
+	mode         ppuMode
 	line         byte // maps to ly
 	lyc          byte
 	scy          byte // scroll offset y
@@ -105,108 +106,108 @@ type PPU struct {
 	yCondition bool // WY == LY condition maintained through frame
 }
 
-func InitPPU(gb *Gameboy) *PPU {
+func initPPU(gb *Gameboy) *PPU {
 	ppu := &PPU{
 		gb:   gb,
-		mode: OAMAccess,
+		mode: oamAccess,
 		lcdc: 0x91,
 		stat: 0x85,
 	}
 
-	for i := range TilesSize {
+	for i := range tilesSize {
 		ppu.tileSet[i] = emptyTile()
 	}
 
 	return ppu
 }
 
-func (ppu *PPU) LYEqualsLYCInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, LYCIntSelectBit)
+func (ppu *PPU) lyEqualsLYCInterruptEnabled() bool {
+	return isBitSet(ppu.stat, lycIntSelectBit)
 }
 
-func (ppu *PPU) OAMInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, Mode2IntSelectBit)
+func (ppu *PPU) oamInterruptEnabled() bool {
+	return isBitSet(ppu.stat, mode2IntSelectBit)
 }
 
-func (ppu *PPU) VBlankInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, Mode1IntSelectBit)
+func (ppu *PPU) vblankInterruptEnabled() bool {
+	return isBitSet(ppu.stat, mode1IntSelectBit)
 }
 
-func (ppu *PPU) HBlankInterruptEnabled() bool {
-	return bitEnabled(ppu.stat, Mode0IntSelectBit)
+func (ppu *PPU) hblankInterruptEnabled() bool {
+	return isBitSet(ppu.stat, mode0IntSelectBit)
 }
 
-func (ppu *PPU) setMode(mode PPUMode) {
+func (ppu *PPU) setMode(mode ppuMode) {
 	ppu.mode = mode
 	ppu.stat = (ppu.stat &^ 0b11) | byte(mode)
 }
 
 // update graphics by individual frame
-func (ppu *PPU) Step(cycles uint16) InterruptRequest {
-	if !bitEnabled(ppu.lcdc, LCDEnableBit) {
+func (ppu *PPU) step(cycles uint16) interruptRequest {
+	if !isBitSet(ppu.lcdc, lcdEnableBit) {
 		if !ppu.gb.screenCleared {
 			ppu.gb.clearScreen()
 		}
 		ppu.cycles = 456
 		ppu.line = 0
 		ppu.windowLine = 0
-		ppu.setMode(HBlank)
-		return NoRequest
+		ppu.setMode(hblank)
+		return noRequest
 	}
 	ppu.gb.screenCleared = false
 
-	request := NoRequest
+	request := noRequest
 	ppu.cycles += cycles
 
 	// set mode in STAT register depending on cycles of current line
 	// OAM 80 cycles, mode3/drawing is 172, hblank is 204
 	switch ppu.mode {
-	case HBlank:
+	case hblank:
 		if ppu.cycles >= 204 {
 			ppu.cycles -= 204
 			ppu.line += 1
 
 			if ppu.line >= 144 {
-				ppu.setMode(VBlank)
-				request.add(VBlankRequest)
-				if ppu.VBlankInterruptEnabled() {
-					request.add(LCDStatRequest)
+				ppu.setMode(vblank)
+				request.add(vblankRequest)
+				if ppu.vblankInterruptEnabled() {
+					request.add(lcdStatRequest)
 				}
 			} else {
-				ppu.setMode(OAMAccess)
-				if ppu.OAMInterruptEnabled() {
-					request.add(LCDStatRequest)
+				ppu.setMode(oamAccess)
+				if ppu.oamInterruptEnabled() {
+					request.add(lcdStatRequest)
 				}
 			}
 			ppu.setEqualLinesCheck(&request)
 		}
-	case VBlank:
+	case vblank:
 		if ppu.cycles >= 456 {
 			ppu.cycles -= 456
 			ppu.line += 1
 			if ppu.line == 154 {
-				ppu.setMode(OAMAccess)
+				ppu.setMode(oamAccess)
 				ppu.line = 0
 				ppu.windowLine = 0
-				if ppu.OAMInterruptEnabled() {
-					request.add(LCDStatRequest)
+				if ppu.oamInterruptEnabled() {
+					request.add(lcdStatRequest)
 				}
 			}
 			ppu.setEqualLinesCheck(&request)
 		}
-	case OAMAccess:
+	case oamAccess:
 		if ppu.cycles >= 80 {
 			ppu.cycles -= 80
-			ppu.setMode(VRAMAccess)
+			ppu.setMode(vramAccess)
 		}
-	case VRAMAccess:
+	case vramAccess:
 		if ppu.cycles >= 172 {
 			ppu.cycles -= 172
-			if ppu.HBlankInterruptEnabled() {
-				request.add(LCDStatRequest)
+			if ppu.hblankInterruptEnabled() {
+				request.add(lcdStatRequest)
 			}
-			ppu.DrawScanline()
-			ppu.setMode(HBlank)
+			ppu.drawScanline()
+			ppu.setMode(hblank)
 		}
 	}
 	return request
@@ -234,18 +235,16 @@ func (ppu *PPU) setTilePixel(x, y, colorNum, palette byte) {
 func (ppu *PPU) setPixel(x, y, colorNum, palette byte, priority bool) {
 	shade := applyPalette(TilePixelValue(colorNum), palette)
 	if ppu.tileScanline[x] == 0 || priority {
-		ppu.gb.Framebuffer[x][y][0] = shade
-		ppu.gb.Framebuffer[x][y][1] = shade
-		ppu.gb.Framebuffer[x][y][2] = shade
+		ppu.gb.framebuffer[x][y][0] = shade
+		ppu.gb.framebuffer[x][y][1] = shade
+		ppu.gb.framebuffer[x][y][2] = shade
 	}
 }
 
-// tileRowAddress returns the VRAM address of row `row` (0-7) of the tile whose ID
-// is stored at mapAddr, honoring the LCDC bit 4 addressing mode.
 func (ppu *PPU) tileRowAddress(mapAddr uint16, row byte) uint16 {
-	tileID := ppu.ReadVRAM(mapAddr)
+	tileID := ppu.readVRAM(mapAddr)
 	var base uint16 = 0x8000
-	if !bitEnabled(ppu.lcdc, BGWindowTileBit) {
+	if !isBitSet(ppu.lcdc, bgWindowTileBit) {
 		// signed mode: IDs 0..127 -> 0x9000..0x97ff, IDs 128..255 (-128..-1) -> 0x8800..0x8fff.
 		// flipping the top bit turns the signed ID into an unsigned offset from 0x8800.
 		base = 0x8800
@@ -254,11 +253,9 @@ func (ppu *PPU) tileRowAddress(mapAddr uint16, row byte) uint16 {
 	return base + uint16(tileID)<<4 + uint16(row)<<1
 }
 
-// drawTileRow draws `count` pixels of one tile row, starting `col` pixels into
-// the tile, at screen position (x, y).
 func (ppu *PPU) drawTileRow(addr uint16, col, count, x, y byte) {
-	lo := ppu.ReadVRAM(addr)
-	hi := ppu.ReadVRAM(addr + 1)
+	lo := ppu.readVRAM(addr)
+	hi := ppu.readVRAM(addr + 1)
 	for i := range count {
 		bit := 7 - (col + i)
 		colorNum := (hi>>bit&1)<<1 | lo>>bit&1
@@ -266,11 +263,9 @@ func (ppu *PPU) drawTileRow(addr uint16, col, count, x, y byte) {
 	}
 }
 
-// DrawBackground draws background pixels [0, endX) of the scanline. endX is
-// ScreenWidth when the window isn't visible on this line, else the window's left edge.
-func (ppu *PPU) DrawBackground(scanline, endX byte) {
+func (ppu *PPU) drawBackground(scanline, endX byte) {
 	mapBase := uint16(0x9800)
-	if bitEnabled(ppu.lcdc, BGTilemapBit) {
+	if isBitSet(ppu.lcdc, bgTilemapBit) {
 		mapBase = 0x9c00
 	}
 
@@ -290,10 +285,9 @@ func (ppu *PPU) DrawBackground(scanline, endX byte) {
 	}
 }
 
-// DrawWindow draws window pixels [startX, ScreenWidth) of the scanline.
-func (ppu *PPU) DrawWindow(scanline, startX byte) {
+func (ppu *PPU) drawWindow(scanline, startX byte) {
 	mapBase := uint16(0x9800)
-	if bitEnabled(ppu.lcdc, WindowTilemapBit) {
+	if isBitSet(ppu.lcdc, windowTilemapBit) {
 		mapBase = 0x9c00
 	}
 
@@ -315,12 +309,11 @@ func (ppu *PPU) DrawWindow(scanline, startX byte) {
 	}
 }
 
-// windowStartX returns the window's first visible x on this line, or ScreenWidth if none.
 func (ppu *PPU) windowStartX() byte {
-	if !bitEnabled(ppu.lcdc, WindowEnableBit) || ppu.line < ppu.winY {
+	if !isBitSet(ppu.lcdc, windowEnableBit) || ppu.line < ppu.winY {
 		return ScreenWidth
 	}
-	wx := ppu.winX + 7 // recover the raw WX register value
+	wx := ppu.winX + 7
 	switch {
 	case wx < 7:
 		return 0
@@ -330,16 +323,16 @@ func (ppu *PPU) windowStartX() byte {
 	return wx - 7
 }
 
-func (ppu *PPU) DrawSprites() {
-	mb := ppu.gb.MemoryBus
+func (ppu *PPU) drawSprites() {
+	mb := ppu.gb.memoryBus
 	scanline := int32(ppu.line)
 	var ySize int32 = 8
-	if bitEnabled(ppu.lcdc, OBJSizeBit) {
+	if isBitSet(ppu.lcdc, objSizeBit) {
 		ySize = 16
 	}
 
-	objPalette0 := mb.ReadAddress(0xff48)
-	objPalette1 := mb.ReadAddress(0xff49)
+	objPalette0 := mb.readAddress(0xff48)
+	objPalette1 := mb.readAddress(0xff49)
 
 	var minX [ScreenWidth]int32
 	const priorityOffset int32 = 100
@@ -347,7 +340,7 @@ func (ppu *PPU) DrawSprites() {
 	for sprite := range uint16(40) {
 		index := 0xfe00 + (sprite * 4)
 
-		yPos := int32(mb.ReadAddress(index)) - 16
+		yPos := int32(mb.readAddress(index)) - 16
 		if scanline < yPos || scanline >= (yPos+ySize) {
 			continue
 		}
@@ -357,18 +350,18 @@ func (ppu *PPU) DrawSprites() {
 		}
 		lineSprites++
 
-		xPos := int32(mb.ReadAddress(index+1)) - 8
-		tileIndex := mb.ReadAddress(index + 2)
-		attributes := mb.ReadAddress(index + 3)
+		xPos := int32(mb.readAddress(index+1)) - 8
+		tileIndex := mb.readAddress(index + 2)
+		attributes := mb.readAddress(index + 3)
 
 		// in 8x16 mode the LSB of the tile index is ignored
 		if ySize == 16 {
 			tileIndex &= 0xfe
 		}
 
-		xFlip := bitEnabled(attributes, 5)
-		yFlip := bitEnabled(attributes, 6)
-		priority := !bitEnabled(attributes, 7)
+		xFlip := isBitSet(attributes, 5)
+		yFlip := isBitSet(attributes, 6)
+		priority := !isBitSet(attributes, 7)
 
 		line := scanline - yPos
 		if yFlip {
@@ -379,7 +372,6 @@ func (ppu *PPU) DrawSprites() {
 		data1 := ppu.vram[dataAddress]
 		data2 := ppu.vram[dataAddress+1]
 
-		// draw line of the sprite
 		for tilePixel := range byte(8) {
 			pix := int16(xPos) + int16(7-tilePixel)
 			if pix < 0 || pix >= ScreenWidth {
@@ -396,14 +388,14 @@ func (ppu *PPU) DrawSprites() {
 				colorBit = 7 - tilePixel
 			}
 
-			colorNum := (GetBit(data2, colorBit)<<1 | GetBit(data1, colorBit))
+			colorNum := (getBit(data2, colorBit)<<1 | getBit(data1, colorBit))
 			// color 0 <=> transparent
 			if colorNum == 0 {
 				continue
 			}
 
 			var palette = objPalette0
-			if bitEnabled(attributes, 4) {
+			if isBitSet(attributes, 4) {
 				palette = objPalette1
 			}
 			ppu.setPixel(byte(pix), byte(scanline), colorNum, palette, priority)
@@ -412,52 +404,52 @@ func (ppu *PPU) DrawSprites() {
 	}
 }
 
-func (ppu *PPU) DrawScanline() {
-	if bitEnabled(ppu.lcdc, BGWindowEnableBit) {
+func (ppu *PPU) drawScanline() {
+	if isBitSet(ppu.lcdc, bgWindowEnableBit) {
 		winStart := ppu.windowStartX()
-		ppu.DrawBackground(ppu.line, winStart)
+		ppu.drawBackground(ppu.line, winStart)
 		if winStart < ScreenWidth {
-			ppu.DrawWindow(ppu.line, winStart)
+			ppu.drawWindow(ppu.line, winStart)
 			ppu.windowLine++
 		}
 	}
 
-	if bitEnabled(ppu.lcdc, OBJEnableBit) {
-		ppu.DrawSprites()
+	if isBitSet(ppu.lcdc, objEnableBit) {
+		ppu.drawSprites()
 	}
 }
 
-func (ppu *PPU) setEqualLinesCheck(request *InterruptRequest) {
-	equal := ppu.line == ppu.lyc
+func (ppu *PPU) setEqualLinesCheck(request *interruptRequest) {
+	equal := (ppu.line == ppu.lyc)
 	if equal {
-		SetBit(&ppu.stat, CoincidenceBit)
-		if ppu.LYEqualsLYCInterruptEnabled() {
-			request.add(LCDStatRequest)
+		setBit(&ppu.stat, coincidenceBit)
+		if ppu.lyEqualsLYCInterruptEnabled() {
+			request.add(lcdStatRequest)
 		}
 	} else {
-		UnsetBit(&ppu.stat, CoincidenceBit)
+		unsetBit(&ppu.stat, coincidenceBit)
 	}
 	ppu.lyEqualsLYC = equal
 }
 
 // update LYC and LY == LYC coincidence
-func (ppu *PPU) WriteLYC(val byte) {
+func (ppu *PPU) writeLYC(val byte) {
 	ppu.lyc = val
 	equal := ppu.lyc == ppu.line
 	if equal {
-		SetBit(&ppu.stat, CoincidenceBit)
+		setBit(&ppu.stat, coincidenceBit)
 	} else {
-		UnsetBit(&ppu.stat, CoincidenceBit)
+		unsetBit(&ppu.stat, coincidenceBit)
 	}
 	ppu.lyEqualsLYC = equal
 }
 
-func (ppu *PPU) ReadVRAM(addr uint16) byte {
-	return ppu.vram[addr-VRAMBegin]
+func (ppu *PPU) readVRAM(addr uint16) byte {
+	return ppu.vram[addr-vramBegin]
 }
 
-func (ppu *PPU) WriteVRAM(addr uint16, val byte) {
-	physicalAddr := addr - VRAMBegin
+func (ppu *PPU) writeVRAM(addr uint16, val byte) {
+	physicalAddr := addr - vramBegin
 	ppu.vram[physicalAddr] = val
 	// the complicated part of this is caching our tile set in the tileSet field
 	// we aren't writing to tileset storage if the address goes past 0x1800

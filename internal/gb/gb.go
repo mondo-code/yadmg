@@ -1,10 +1,6 @@
 package gb
 
-const (
-	DivFreq           = 0xff
-	FramebufferWidth  = 160
-	FramebufferHeight = 144
-)
+const divFreq = 0xff
 
 type Screen interface {
 	Render(framebuffer *[160][144][3]uint8)
@@ -17,17 +13,17 @@ type Speaker interface {
 }
 
 type Gameboy struct {
-	CPU           *CPU
-	PPU           *PPU
-	MemoryBus     *MemoryBus
-	APU 		  *APU
+	cpu           *CPU
+	ppu           *PPU
+	memoryBus     *MemoryBus
+	apu           *APU
 	emuCycles     uint64
-	TimerCycles   uint16
-	DivCycles     uint16
+	timerCycles   uint16
+	divCycles     uint16
 	screen        Screen
-	speaker 	  Speaker
+	speaker       Speaker
 	joypad        *Joypad
-	Framebuffer   *[FramebufferWidth][FramebufferHeight][3]uint8
+	framebuffer   *[ScreenWidth][ScreenHeight][3]uint8
 	paused        bool
 	LogOpcodes    bool
 	screenCleared bool
@@ -37,15 +33,15 @@ func InitGameboy(romPath string, screen Screen, speaker Speaker) (*Gameboy, erro
 	gb := &Gameboy{}
 	gb.screen = screen
 	gb.speaker = speaker
-	gb.CPU = InitCPU(gb)
-	mb := InitMemoryBus(gb)
-	gb.MemoryBus = mb
-	gb.PPU = InitPPU(gb)
-	gb.Framebuffer = &[FramebufferWidth][FramebufferHeight][3]uint8{}
-	gb.APU = InitAPU()
-	gb.joypad = InitJoypad()
+	gb.cpu = initCPU(gb)
+	mb := initMemoryBus(gb)
+	gb.memoryBus = mb
+	gb.ppu = initPPU(gb)
+	gb.framebuffer = &[ScreenWidth][ScreenHeight][3]uint8{}
+	gb.apu = initAPU()
+	gb.joypad = initJoypad()
 	gb.clearScreen()
-	_, err := mb.LoadCartridge(romPath)
+	_, err := mb.loadCartridge(romPath)
 	if err != nil {
 		return nil, err
 	}
@@ -53,77 +49,77 @@ func InitGameboy(romPath string, screen Screen, speaker Speaker) (*Gameboy, erro
 	return gb, nil
 }
 
-func (gb *Gameboy) HandleInterrupts() (cycles uint16) {
-	if gb.CPU.IMEPending {
-		gb.CPU.IME = true
-		gb.CPU.IMEPending = false
+func (gb *Gameboy) handleInterrupts() (cycles uint16) {
+	if gb.cpu.interruptEnablePending {
+		gb.cpu.interruptsEnabled = true
+		gb.cpu.interruptEnablePending = false
 		return 0
 	}
 
-	if !gb.CPU.IME && !gb.CPU.Halted {
+	if !gb.cpu.interruptsEnabled && !gb.cpu.halted {
 		return 0
 	}
 
-	mask := gb.MemoryBus.IE & gb.MemoryBus.IF
+	mask := gb.memoryBus.regIE & gb.memoryBus.regIF
 
 	if mask != 0 {
-		gb.CPU.Halted = false
+		gb.cpu.halted = false
 	}
 
-	if !gb.CPU.IME {
+	if !gb.cpu.interruptsEnabled {
 		return 0
 	}
 
 	// there are much nicer ways to write this, will probably refactor later
 	// handle requested interrupt
 	if mask&VBlankFlag != 0 {
-		gb.MemoryBus.IF &= ^VBlankFlag
-		gb.CPU.jumpToISRAddress(VBlankAddr)
+		gb.memoryBus.regIF &= ^VBlankFlag
+		gb.cpu.jumpToISRAddress(VBlankAddr)
 		return 20
 	}
 
 	if mask&LCDStatFlag != 0 {
-		gb.MemoryBus.IF &= ^LCDStatFlag
-		gb.CPU.jumpToISRAddress(LCDStatAddr)
+		gb.memoryBus.regIF &= ^LCDStatFlag
+		gb.cpu.jumpToISRAddress(LCDStatAddr)
 		return 20
 	}
 
 	if mask&TimerFlag != 0 {
-		gb.MemoryBus.IF &= ^TimerFlag
-		gb.CPU.jumpToISRAddress(TimerAddr)
+		gb.memoryBus.regIF &= ^TimerFlag
+		gb.cpu.jumpToISRAddress(TimerAddr)
 		return 20
 	}
 
 	if mask&SerialFlag != 0 {
-		gb.MemoryBus.IF &= ^SerialFlag
-		gb.CPU.jumpToISRAddress(SerialAddr)
+		gb.memoryBus.regIF &= ^SerialFlag
+		gb.cpu.jumpToISRAddress(SerialAddr)
 		return 20
 	}
 
 	if mask&JoypadFlag != 0 {
-		gb.MemoryBus.IF &= ^JoypadFlag
-		gb.CPU.jumpToISRAddress(JoypadAddr)
+		gb.memoryBus.regIF &= ^JoypadFlag
+		gb.cpu.jumpToISRAddress(JoypadAddr)
 		return 20
 	}
 
 	return 0
 }
 
-func (gb *Gameboy) StepDivider(cycles uint16) {
-	gb.DivCycles += cycles
-	if gb.DivCycles >= DivFreq {
-		gb.DivCycles -= DivFreq
-		gb.MemoryBus.memory[DIVAddress]++
+func (gb *Gameboy) stepDivider(cycles uint16) {
+	gb.divCycles += cycles
+	if gb.divCycles >= divFreq {
+		gb.divCycles -= divFreq
+		gb.memoryBus.memory[divAddress]++
 	}
 }
 
-func (gb *Gameboy) IsTimerEnabled() bool {
-	tac := gb.MemoryBus.ReadAddress(TACAddress)
-	return bitEnabled(tac, 2)
+func (gb *Gameboy) isTimerEnabled() bool {
+	tac := gb.memoryBus.readAddress(tacAddress)
+	return isBitSet(tac, 2)
 }
 
-func (gb *Gameboy) GetTimerFreq() uint16 {
-	tac := gb.MemoryBus.ReadAddress(TACAddress) & 0b11
+func (gb *Gameboy) getTimerFreq() uint16 {
+	tac := gb.memoryBus.readAddress(tacAddress) & 0b11
 	switch tac {
 	case 0b00:
 		return 1024
@@ -136,37 +132,32 @@ func (gb *Gameboy) GetTimerFreq() uint16 {
 	}
 }
 
-func (gb *Gameboy) StepTimer(cycles uint16) {
-	if !gb.IsTimerEnabled() {
+func (gb *Gameboy) stepTimer(cycles uint16) {
+	if !gb.isTimerEnabled() {
 		return
 	}
 
-	gb.TimerCycles += cycles
-	freq := gb.GetTimerFreq()
-	for gb.TimerCycles >= freq {
-		gb.TimerCycles -= freq
-		tima := gb.MemoryBus.ReadAddress(TIMAAddress)
+	gb.timerCycles += cycles
+	freq := gb.getTimerFreq()
+	for gb.timerCycles >= freq {
+		gb.timerCycles -= freq
+		tima := gb.memoryBus.readAddress(timaAddress)
 		if tima == 0xff {
-			tma := gb.MemoryBus.ReadAddress(TMAAddress)
-			gb.MemoryBus.WriteToAddress(TIMAAddress, tma)
-			gb.MemoryBus.RequestInterrupt(TimerFlag)
+			tma := gb.memoryBus.readAddress(tmaAddress)
+			gb.memoryBus.writeToAddress(timaAddress, tma)
+			gb.memoryBus.requestInterrupt(TimerFlag)
 		} else {
-			gb.MemoryBus.WriteToAddress(TIMAAddress, tima+1)
+			gb.memoryBus.writeToAddress(timaAddress, tima+1)
 		}
 	}
 }
 
-func (gb *Gameboy) IsDisplayEnabled() bool {
-	lcdc := gb.MemoryBus.ReadAddress(LCDControlAddress)
-	return bitEnabled(lcdc, LCDEnableBit)
-}
-
 func (gb *Gameboy) clearScreen() {
-	for x := range FramebufferWidth {
-		for y := range FramebufferHeight {
-			gb.Framebuffer[x][y][0] = 255
-			gb.Framebuffer[x][y][1] = 255
-			gb.Framebuffer[x][y][2] = 255
+	for x := range ScreenWidth {
+		for y := range ScreenHeight {
+			gb.framebuffer[x][y][0] = 255
+			gb.framebuffer[x][y][1] = 255
+			gb.framebuffer[x][y][2] = 255
 		}
 	}
 	gb.screenCleared = true
@@ -174,15 +165,15 @@ func (gb *Gameboy) clearScreen() {
 
 func (gb *Gameboy) Step(cycleBudget uint64) error {
 	for gb.emuCycles < cycleBudget {
-		cycles, err := gb.CPU.Step()
+		cycles, err := gb.cpu.step()
 		if err != nil {
 			return err
 		}
-		gb.MemoryBus.Step(cycles)
-		gb.APU.Step(cycles)
+		gb.memoryBus.step(cycles)
+		gb.apu.step(cycles)
 		gb.emuCycles += uint64(cycles)
 	}
 	gb.emuCycles -= cycleBudget
-	gb.speaker.EmitAudio(gb.APU.getSamples())
+	gb.speaker.EmitAudio(gb.apu.getSamples())
 	return nil
 }

@@ -6,15 +6,15 @@ const (
 )
 
 type MBC interface {
-	Read(addr uint16) byte
-	Write(addr uint16, val byte)
-	RomSize() int
-	RamSize() int
-	SaveData() []byte
-	HasBattery() bool
-	SaveRequested() bool
-	SatisfySaveRequest()
-	LoadData(data []byte)
+	read(addr uint16) byte
+	write(addr uint16, val byte)
+	romSize() int
+	ramSize() int
+	saveData() []byte
+	hasBattery() bool
+	saveRequested() bool
+	satisfySaveRequest()
+	loadData(data []byte)
 }
 
 type ROM struct {
@@ -22,61 +22,61 @@ type ROM struct {
 	battery bool
 }
 
-func InitROM(rom []byte, hasBattery bool) *ROM {
+func initROM(rom []byte, hasBattery bool) *ROM {
 	return &ROM{
 		rom:     rom,
 		battery: hasBattery,
 	}
 }
 
-func (mbc *ROM) Read(addr uint16) byte {
+func (mbc *ROM) read(addr uint16) byte {
 	return mbc.rom[addr]
 }
 
-func (mbc *ROM) Write(addr uint16, val byte) {
+func (mbc *ROM) write(addr uint16, val byte) {
 	// ROM only, ignore write to ROM space
 }
 
-func (mbc *ROM) RomSize() int {
+func (mbc *ROM) romSize() int {
 	return len(mbc.rom)
 }
 
-func (mbc *ROM) RamSize() int {
+func (mbc *ROM) ramSize() int {
 	return 0
 }
 
-func (mbc *ROM) SaveData() []byte {
+func (mbc *ROM) saveData() []byte {
 	return []byte{}
 }
 
-func (mbc *ROM) LoadData(data []byte) {}
+func (mbc *ROM) loadData(data []byte) {}
 
-func (mbc *ROM) HasBattery() bool {
+func (mbc *ROM) hasBattery() bool {
 	return mbc.battery
 }
 
-func (mbc *ROM) SaveRequested() bool {
+func (mbc *ROM) saveRequested() bool {
 	return false
 }
 
-func (mbc *ROM) SatisfySaveRequest() {}
+func (mbc *ROM) satisfySaveRequest() {}
 
 // MBC1: max 2MB ROM and/or 32KiB RAM
 type MBC1 struct {
-	rom           []byte
-	lowRomBank    uint32
-	upperRomBank  uint32
-	bank1         byte
-	bank2         byte
-	mode          bool
-	ram           []byte
-	ramEnabled    bool
-	ramOffset     uint32
-	battery       bool
-	saveRequested bool
+	rom             []byte
+	lowRomBank      uint32
+	upperRomBank    uint32
+	bank1           byte
+	bank2           byte
+	mode            bool
+	ram             []byte
+	ramEnabled      bool
+	ramOffset       uint32
+	battery         bool
+	isSaveRequested bool
 }
 
-func InitMBC1(rom []byte, ramSize uint32, hasBattery bool) *MBC1 {
+func initMBC1(rom []byte, ramSize uint32, hasBattery bool) *MBC1 {
 	mbc := &MBC1{
 		rom:          rom,
 		bank1:        1,
@@ -118,13 +118,13 @@ func (mbc *MBC1) effectiveRamAddr(addr uint16) uint32 {
 	return (mbc.ramOffset | (uint32(addr) & 0x1fff)) & uint32(len(mbc.ram)-1)
 }
 
-func (mbc *MBC1) Read(addr uint16) byte {
+func (mbc *MBC1) read(addr uint16) byte {
 	switch {
 	case addr < 0x4000:
-		romAddr := effectiveRomAddr(mbc.lowRomBank, addr, mbc.RomSize())
+		romAddr := effectiveRomAddr(mbc.lowRomBank, addr, mbc.romSize())
 		return mbc.rom[romAddr]
 	case addr < 0x8000:
-		romAddr := effectiveRomAddr(mbc.upperRomBank, addr, mbc.RomSize())
+		romAddr := effectiveRomAddr(mbc.upperRomBank, addr, mbc.romSize())
 		return mbc.rom[romAddr]
 	case addr >= 0xa000 && addr <= 0xbfff:
 		if !mbc.ramEnabled {
@@ -138,13 +138,13 @@ func (mbc *MBC1) Read(addr uint16) byte {
 	return 0xff
 }
 
-func (mbc *MBC1) Write(addr uint16, val byte) {
+func (mbc *MBC1) write(addr uint16, val byte) {
 	switch {
 	case addr < 0x2000:
 		wasEnabled := mbc.ramEnabled
 		mbc.ramEnabled = ((val & 0xf) == 0b1010)
 		if mbc.battery && wasEnabled == true && mbc.ramEnabled != wasEnabled {
-			mbc.saveRequested = true
+			mbc.isSaveRequested = true
 		}
 	case addr < 0x4000:
 		// bank 1 isn't allowed to be 0
@@ -158,7 +158,7 @@ func (mbc *MBC1) Write(addr uint16, val byte) {
 		mbc.computeRomOffsets()
 		mbc.computeRamOffset()
 	case addr < 0x8000:
-		mbc.mode = bitEnabled(val, 0)
+		mbc.mode = isBitSet(val, 0)
 		mbc.computeRomOffsets()
 		mbc.computeRamOffset()
 	case addr >= 0xa000 && addr <= 0xbfff:
@@ -172,19 +172,15 @@ func (mbc *MBC1) Write(addr uint16, val byte) {
 	}
 }
 
-func (mbc *MBC1) Size() int {
+func (mbc *MBC1) romSize() int {
 	return len(mbc.rom)
 }
 
-func (mbc *MBC1) RomSize() int {
-	return len(mbc.rom)
-}
-
-func (mbc *MBC1) RamSize() int {
+func (mbc *MBC1) ramSize() int {
 	return len(mbc.ram)
 }
 
-func (mbc *MBC1) SaveData() []byte {
+func (mbc *MBC1) saveData() []byte {
 	if !mbc.battery {
 		return nil
 	}
@@ -193,31 +189,31 @@ func (mbc *MBC1) SaveData() []byte {
 	return saveData
 }
 
-func (mbc *MBC1) LoadData(data []byte) {
+func (mbc *MBC1) loadData(data []byte) {
 	copy(mbc.ram, data)
 }
 
-func (mbc *MBC1) HasBattery() bool {
+func (mbc *MBC1) hasBattery() bool {
 	return mbc.battery
 }
 
-func (mbc *MBC1) SaveRequested() bool {
-	return mbc.saveRequested
+func (mbc *MBC1) saveRequested() bool {
+	return mbc.isSaveRequested
 }
 
-func (mbc *MBC1) SatisfySaveRequest() {
-	mbc.saveRequested = false
+func (mbc *MBC1) satisfySaveRequest() {
+	mbc.isSaveRequested = false
 }
 
 // MBC2: max 256 KiB ROM, 512 x 4 bits RAM
 type MBC2 struct {
-	rom           []byte
-	romBank       byte
-	upperRomBank  uint32
-	ram           []byte // these function as half-bytes, upper 4 bits ignored
-	ramEnabled    bool
-	battery       bool
-	saveRequested bool
+	rom             []byte
+	romBank         byte
+	upperRomBank    uint32
+	ram             []byte // these function as half-bytes, upper 4 bits ignored
+	ramEnabled      bool
+	battery         bool
+	isSaveRequested bool
 }
 
 func (mbc *MBC2) computeRomOffset() {
@@ -228,7 +224,7 @@ func (mbc *MBC2) effectiveRamAddr(addr uint16) uint32 {
 	return uint32(addr) & 0x1ff
 }
 
-func InitMBC2(rom []byte, hasBattery bool) *MBC2 {
+func initMBC2(rom []byte, hasBattery bool) *MBC2 {
 	mbc := &MBC2{
 		rom: rom, romBank: 1,
 		ram:     make([]byte, 512),
@@ -238,12 +234,12 @@ func InitMBC2(rom []byte, hasBattery bool) *MBC2 {
 	return mbc
 }
 
-func (mbc *MBC2) Read(addr uint16) byte {
+func (mbc *MBC2) read(addr uint16) byte {
 	switch {
 	case addr < 0x4000:
 		return mbc.rom[addr]
 	case addr < 0x8000:
-		romAddr := effectiveRomAddr(mbc.upperRomBank, addr, mbc.RomSize())
+		romAddr := effectiveRomAddr(mbc.upperRomBank, addr, mbc.romSize())
 		return mbc.rom[romAddr]
 	case addr >= 0xa000 && addr <= 0xbfff: // built-in RAM plus echoes
 		if !mbc.ramEnabled {
@@ -255,7 +251,7 @@ func (mbc *MBC2) Read(addr uint16) byte {
 	return 0xff
 }
 
-func (mbc *MBC2) Write(addr uint16, val byte) {
+func (mbc *MBC2) write(addr uint16, val byte) {
 	switch {
 	// RAM enable or ROM bank, depending on bit 8
 	case addr < 0x4000:
@@ -263,7 +259,7 @@ func (mbc *MBC2) Write(addr uint16, val byte) {
 			wasEnabled := mbc.ramEnabled
 			mbc.ramEnabled = ((val & 0x0f) == 0b1010)
 			if mbc.battery && wasEnabled == true && mbc.ramEnabled != wasEnabled {
-				mbc.saveRequested = true
+				mbc.isSaveRequested = true
 			}
 		} else {
 			// bank isn't allowed to be 0
@@ -282,27 +278,23 @@ func (mbc *MBC2) Write(addr uint16, val byte) {
 	}
 }
 
-func (mbc *MBC2) Size() int {
+func (mbc *MBC2) romSize() int {
 	return len(mbc.rom)
 }
 
-func (mbc *MBC2) RomSize() int {
-	return len(mbc.rom)
-}
-
-func (mbc *MBC2) RamSize() int {
+func (mbc *MBC2) ramSize() int {
 	return len(mbc.ram)
 }
 
-func (mbc *MBC2) HasBattery() bool {
+func (mbc *MBC2) hasBattery() bool {
 	return mbc.battery
 }
 
-func (mbc *MBC2) SaveRequested() bool {
-	return mbc.saveRequested
+func (mbc *MBC2) saveRequested() bool {
+	return mbc.isSaveRequested
 }
 
-func (mbc *MBC2) SaveData() []byte {
+func (mbc *MBC2) saveData() []byte {
 	if !mbc.battery {
 		return nil
 	}
@@ -311,12 +303,12 @@ func (mbc *MBC2) SaveData() []byte {
 	return saveData
 }
 
-func (mbc *MBC2) LoadData(data []byte) {
+func (mbc *MBC2) loadData(data []byte) {
 	copy(mbc.ram, data)
 }
 
-func (mbc *MBC2) SatisfySaveRequest() {
-	mbc.saveRequested = false
+func (mbc *MBC2) satisfySaveRequest() {
+	mbc.isSaveRequested = false
 }
 
 type MBC3 struct {
@@ -335,10 +327,10 @@ type MBC3 struct {
 
 	ramAndTimerEnabled bool
 	battery            bool
-	saveRequested      bool
+	isSaveRequested    bool
 }
 
-func InitMBC3(rom []byte, ramSize uint32, hasBattery bool) *MBC3 {
+func initMBC3(rom []byte, ramSize uint32, hasBattery bool) *MBC3 {
 	return &MBC3{
 		rom:     rom,
 		romBank: 1,
@@ -359,12 +351,12 @@ func (mbc *MBC3) effectiveRamAddr(addr uint16) uint32 {
 	return (mbc.ramOffset | (uint32(addr) & 0x1fff)) & uint32(len(mbc.ram)-1)
 }
 
-func (mbc *MBC3) Read(addr uint16) byte {
+func (mbc *MBC3) read(addr uint16) byte {
 	switch {
 	case addr < 0x4000:
 		return mbc.rom[addr]
 	case addr < 0x8000:
-		romAddr := effectiveRomAddr(mbc.upperRomBank, addr, mbc.RomSize())
+		romAddr := effectiveRomAddr(mbc.upperRomBank, addr, mbc.romSize())
 		return mbc.rom[romAddr]
 	case addr >= 0xa000 && addr <= 0xbfff:
 		// RAM bank 00 - 07 or RTC register
@@ -382,14 +374,14 @@ func (mbc *MBC3) Read(addr uint16) byte {
 	return 0xff
 }
 
-func (mbc *MBC3) Write(addr uint16, val byte) {
+func (mbc *MBC3) write(addr uint16, val byte) {
 	switch {
 	case addr < 0x2000:
 		// if RAM switches from enabled to disabled, we want to save RAM data into .sav file
 		wasEnabled := mbc.ramAndTimerEnabled
 		mbc.ramAndTimerEnabled = ((val & 0xf) == 0b1010)
 		if mbc.battery && wasEnabled == true && mbc.ramAndTimerEnabled != wasEnabled {
-			mbc.saveRequested = true
+			mbc.isSaveRequested = true
 		}
 	case addr < 0x4000:
 		// ROM bank number
@@ -430,19 +422,15 @@ func (mbc *MBC3) Write(addr uint16, val byte) {
 	}
 }
 
-func (mbc *MBC3) Size() int {
+func (mbc *MBC3) romSize() int {
 	return len(mbc.rom)
 }
 
-func (mbc *MBC3) RomSize() int {
-	return len(mbc.rom)
-}
-
-func (mbc *MBC3) RamSize() int {
+func (mbc *MBC3) ramSize() int {
 	return len(mbc.ram)
 }
 
-func (mbc *MBC3) SaveData() []byte {
+func (mbc *MBC3) saveData() []byte {
 	if !mbc.battery {
 		return nil
 	}
@@ -451,18 +439,18 @@ func (mbc *MBC3) SaveData() []byte {
 	return saveData
 }
 
-func (mbc *MBC3) LoadData(data []byte) {
+func (mbc *MBC3) loadData(data []byte) {
 	copy(mbc.ram, data)
 }
 
-func (mbc *MBC3) HasBattery() bool {
+func (mbc *MBC3) hasBattery() bool {
 	return mbc.battery
 }
 
-func (mbc *MBC3) SaveRequested() bool {
-	return mbc.saveRequested
+func (mbc *MBC3) saveRequested() bool {
+	return mbc.isSaveRequested
 }
 
-func (mbc *MBC3) SatisfySaveRequest() {
-	mbc.saveRequested = false
+func (mbc *MBC3) satisfySaveRequest() {
+	mbc.isSaveRequested = false
 }

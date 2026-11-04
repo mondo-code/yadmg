@@ -14,15 +14,15 @@ type Cartridge struct {
 	filepath string
 }
 
-func (c *Cartridge) Read(addr uint16) byte {
-	return c.mbc.Read(addr)
+func (c *Cartridge) read(addr uint16) byte {
+	return c.mbc.read(addr)
 }
 
-func (c *Cartridge) Write(addr uint16, val byte) {
-	c.mbc.Write(addr, val)
+func (c *Cartridge) write(addr uint16, val byte) {
+	c.mbc.write(addr, val)
 }
 
-func InitCartFromFile(path string) (*Cartridge, error) {
+func initCartFromFile(path string) (*Cartridge, error) {
 	cart := &Cartridge{}
 	cart.filepath = path
 	rom, err := os.ReadFile(path)
@@ -56,34 +56,34 @@ func InitCartFromFile(path string) (*Cartridge, error) {
 	switch mbcFlag {
 	// ROM only
 	case 0x00, 0x08:
-		cart.mbc = InitROM(rom, false)
+		cart.mbc = initROM(rom, false)
 	case 0x09:
-		cart.mbc = InitROM(rom, true)
+		cart.mbc = initROM(rom, true)
 	// MBC1
 	case 0x01, 0x02:
-		cart.mbc = InitMBC1(rom, ramSize, false)
+		cart.mbc = initMBC1(rom, ramSize, false)
 	case 0x03:
-		cart.mbc = InitMBC1(rom, ramSize, true)
+		cart.mbc = initMBC1(rom, ramSize, true)
 	// MBC2
 	case 0x05:
-		cart.mbc = InitMBC2(rom, false)
+		cart.mbc = initMBC2(rom, false)
 	case 0x06:
-		cart.mbc = InitMBC2(rom, true)
+		cart.mbc = initMBC2(rom, true)
 	// MBC3
 	case 0x11, 0x12:
-		cart.mbc = InitMBC3(rom, ramSize, false)
+		cart.mbc = initMBC3(rom, ramSize, false)
 	case 0x0f, 0x10, 0x13:
-		cart.mbc = InitMBC3(rom, ramSize, true)
+		cart.mbc = initMBC3(rom, ramSize, true)
 	default:
 		return nil, fmt.Errorf("unrecognized or unsupported cartridge type")
 	}
 
-	cart.LoadSave()
+	cart.loadSave()
 	return cart, nil
 }
 
-func (c *Cartridge) Save() {
-	saveData := c.mbc.SaveData()
+func (c *Cartridge) save() {
+	saveData := c.mbc.saveData()
 	if len(saveData) == 0 {
 		// don't want cartridges with no battery to unnecessarily try to write save data
 		return
@@ -102,7 +102,7 @@ func (c *Cartridge) Save() {
 	}
 }
 
-func (c *Cartridge) LoadSave() {
+func (c *Cartridge) loadSave() {
 	// can we find save file for this cartridge?
 	savePath := strings.TrimSuffix(c.filepath, filepath.Ext(c.filepath)) + ".sav"
 	saveFile, err := os.OpenFile(savePath, os.O_RDONLY, 0644)
@@ -118,14 +118,14 @@ func (c *Cartridge) LoadSave() {
 		return
 	}
 
-	c.mbc.LoadData(saveData)
+	c.mbc.loadData(saveData)
 }
 
-func (c *Cartridge) Step() {
+func (c *Cartridge) step() {
 	// if we have a battery, check if saving to battery is requested
-	if c.mbc.HasBattery() && c.mbc.SaveRequested() {
+	if c.mbc.hasBattery() && c.mbc.saveRequested() {
 		// check if we need a save because RAM was switched from enable to disable
-		c.Save()
-		c.mbc.SatisfySaveRequest()
+		c.save()
+		c.mbc.satisfySaveRequest()
 	}
 }

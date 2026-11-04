@@ -17,16 +17,16 @@ type Registers struct {
 }
 
 type CPU struct {
-	gb             *Gameboy
-	regs           Registers
-	flags          FlagsRegister
-	PC             uint16
-	SP             uint16
-	instructions   [0x100]Instruction
-	cbInstructions [0x100]Instruction
-	Halted         bool
-	IME            bool
-	IMEPending     bool
+	gb                     *Gameboy
+	regs                   Registers
+	flags                  FlagsRegister
+	pc                     uint16
+	sp                     uint16
+	instructions           [0x100]instruction
+	cbInstructions         [0x100]instruction
+	halted                 bool
+	interruptsEnabled      bool
+	interruptEnablePending bool
 }
 
 func (cpu *CPU) getBC() uint16 {
@@ -64,20 +64,20 @@ func (cpu *CPU) setAF(val uint16) {
 }
 
 func (cpu *CPU) getSP() uint16 {
-	return cpu.SP
+	return cpu.sp
 }
 
 func (cpu *CPU) setSP(val uint16) {
-	cpu.SP = val
+	cpu.sp = val
 }
 
-func (cpu *CPU) Step() (cycles uint16, err error) {
-	cycles += cpu.gb.HandleInterrupts()
+func (cpu *CPU) step() (cycles uint16, err error) {
+	cycles += cpu.gb.handleInterrupts()
 
 	var opCycles uint16 = 4
-	var nextPC uint16 = cpu.PC
-	if !cpu.Halted {
-		opcode := cpu.gb.MemoryBus.ReadAddress(cpu.PC)
+	var nextPC uint16 = cpu.pc
+	if !cpu.halted {
+		opcode := cpu.gb.memoryBus.readAddress(cpu.pc)
 		instruction := cpu.instructions[opcode]
 
 		if instruction == nil {
@@ -85,20 +85,20 @@ func (cpu *CPU) Step() (cycles uint16, err error) {
 		}
 
 		operands := []byte{
-			cpu.gb.MemoryBus.ReadAddress(cpu.PC + 1),
-			cpu.gb.MemoryBus.ReadAddress(cpu.PC + 2),
+			cpu.gb.memoryBus.readAddress(cpu.pc + 1),
+			cpu.gb.memoryBus.readAddress(cpu.pc + 2),
 		}
 
 		if cpu.gb.LogOpcodes {
-			cpu.LogInstruction()
+			cpu.logInstruction()
 		}
 		nextPC, opCycles = instruction(cpu, operands)
 	}
 
 	cycles += opCycles
-	cpu.PC = nextPC
-	cpu.gb.StepDivider(opCycles)
-	cpu.gb.StepTimer(opCycles)
+	cpu.pc = nextPC
+	cpu.gb.stepDivider(opCycles)
+	cpu.gb.stepTimer(opCycles)
 
 	return cycles, nil
 }
@@ -133,7 +133,7 @@ func (fr *FlagsRegister) convertFromByte(val byte) {
 	fr.Carry = ((val >> CarryFlagLocation) & 0b1) != 0
 }
 
-func InitCPU(gb *Gameboy) *CPU {
+func initCPU(gb *Gameboy) *CPU {
 	cpu := &CPU{
 		gb: gb,
 		// initial values for registers
@@ -152,10 +152,10 @@ func InitCPU(gb *Gameboy) *CPU {
 			HalfCarry: true,
 			Carry:     true,
 		},
-		PC:     0x0100, // initialized at cartridge entry point
-		SP:     0xfffe,
-		Halted: false,
-		IME:    false,
+		pc:                0x0100, // initialized at cartridge entry point
+		sp:                0xfffe,
+		halted:            false,
+		interruptsEnabled: false,
 	}
 
 	cpu.initInstructions()
@@ -165,12 +165,12 @@ func InitCPU(gb *Gameboy) *CPU {
 }
 
 func (cpu *CPU) nop() uint16 {
-	return cpu.PC + 1
+	return cpu.pc + 1
 }
 
 // jumps
 func (cpu *CPU) jrCond(cond bool, offset int8) uint16 {
-	next := cpu.PC + 2
+	next := cpu.pc + 2
 	if cond {
 		return uint16(int32(next) + int32(offset))
 	}
@@ -181,11 +181,11 @@ func (cpu *CPU) jpCond(cond bool, target uint16) uint16 {
 	if cond {
 		return target
 	}
-	return cpu.PC + 3
+	return cpu.pc + 3
 }
 
 func (cpu *CPU) call(doJump bool, target uint16) uint16 {
-	nextPC := cpu.PC + 3
+	nextPC := cpu.pc + 3
 	if doJump {
 		cpu.push(nextPC)
 		return target
@@ -197,31 +197,31 @@ func (cpu *CPU) ret(doJump bool) uint16 {
 	if doJump {
 		return cpu.pop()
 	}
-	return cpu.PC + 1
+	return cpu.pc + 1
 }
 
 func (cpu *CPU) push(val uint16) {
-	cpu.SP--
-	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getUpperByte(val))
-	cpu.SP--
-	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getLowerByte(val))
+	cpu.sp--
+	cpu.gb.memoryBus.writeToAddress(cpu.sp, getUpperByte(val))
+	cpu.sp--
+	cpu.gb.memoryBus.writeToAddress(cpu.sp, getLowerByte(val))
 }
 
 func (cpu *CPU) pop() (res uint16) {
 	sp := cpu.getSP()
-	byte1 := cpu.gb.MemoryBus.ReadAddress(sp)
+	byte1 := cpu.gb.memoryBus.readAddress(sp)
 	res = setLowerByte(res, byte1)
-	byte2 := cpu.gb.MemoryBus.ReadAddress(sp + 1)
+	byte2 := cpu.gb.memoryBus.readAddress(sp + 1)
 	res = setUpperByte(res, byte2)
 	cpu.setSP(sp + 2)
 	return res
 }
 
 func (cpu *CPU) rst(addr uint16) uint16 {
-	cpu.SP--
-	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getUpperByte(cpu.PC+1))
-	cpu.SP--
-	cpu.gb.MemoryBus.WriteToAddress(cpu.SP, getLowerByte(cpu.PC+1))
+	cpu.sp--
+	cpu.gb.memoryBus.writeToAddress(cpu.sp, getUpperByte(cpu.pc+1))
+	cpu.sp--
+	cpu.gb.memoryBus.writeToAddress(cpu.sp, getLowerByte(cpu.pc+1))
 	return addr
 }
 
@@ -312,30 +312,26 @@ func (cpu *CPU) cp_n(val byte) {
 	cpu.flags.Zero = (cpu.regs.A - val) == 0
 }
 
-// increment 8 bit target
-func (cpu *CPU) inc_n(target *byte) {
+func (cpu *CPU) inc8(target *byte) {
 	cpu.flags.Subtract = false
 	cpu.flags.HalfCarry = (*target & 0x0f) == 0x0f
 	*target += 1
 	cpu.flags.Zero = (*target == 0)
 }
 
-// increment 16 bit target
-func (cpu *CPU) inc_nn(getReg func() uint16, setReg func(uint16)) {
+func (cpu *CPU) inc16(getReg func() uint16, setReg func(uint16)) {
 	val := getReg()
 	setReg(val + 1)
 }
 
-// decrement 8 bit target
-func (cpu *CPU) dec_n(target *byte) {
+func (cpu *CPU) dec8(target *byte) {
 	cpu.flags.Subtract = true
 	cpu.flags.HalfCarry = (*target & 0x0f) == 0x00
 	*target -= 1
 	cpu.flags.Zero = (*target == 0)
 }
 
-// decrement 16 bit target
-func (cpu *CPU) dec_nn(getReg func() uint16, setReg func(uint16)) {
+func (cpu *CPU) dec16(getReg func() uint16, setReg func(uint16)) {
 	val := getReg()
 	setReg(val - 1)
 }
@@ -563,12 +559,12 @@ func (cpu *CPU) swap(val *byte) {
 	*val = swapped
 }
 
-func (cpu *CPU) inc_sp() {
-	cpu.SP = (cpu.SP + 1) & 0xffff
+func (cpu *CPU) incSP() {
+	cpu.sp = (cpu.sp + 1) & 0xffff
 }
 
-func (cpu *CPU) dec_sp() {
-	cpu.SP = (cpu.SP - 1) & 0xffff
+func (cpu *CPU) decSP() {
+	cpu.sp = (cpu.sp - 1) & 0xffff
 }
 
 func (cpu *CPU) getDAA() (byte, bool) {

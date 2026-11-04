@@ -47,18 +47,18 @@ func setUpperByte(target uint16, hi byte) uint16 {
 	return (target & 0x00ff) | (uint16(hi) << 8)
 }
 
-func bitEnabled(target byte, bit byte) bool {
+func isBitSet(target byte, bit byte) bool {
 	return (target>>bit)&1 == 1
 }
 
-func GetBit(target byte, bit byte) byte {
+func getBit(target byte, bit byte) byte {
 	return (target >> bit) & 1
 }
 
-func SetBit(target *byte, bit byte) {
+func setBit(target *byte, bit byte) {
 	*target |= (1 << bit)
 }
 
-func UnsetBit(target *byte, bit byte) {
+func unsetBit(target *byte, bit byte) {
 	*target &= ^(1 << bit)
 }

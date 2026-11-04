@@ -8,8 +8,6 @@ import (
 )
 
 const (
-	LCDWidth     int32  = 160
-	LCDHeight    int32  = 144
 	initialScale int32  = 3
 	sampleSize   uint32 = 32
 
@@ -19,7 +17,7 @@ const (
 
 var gameboyScreenTint = rl.Color{R: 0xe0, G: 0xf8, B: 0xd0, A: 0xff}
 
-type Frontend struct {
+type frontend struct {
 	texture    rl.Texture2D
 	keymap     [numButtons]int32
 	stream     rl.AudioStream
@@ -28,8 +26,8 @@ type Frontend struct {
 	muted      bool
 }
 
-func InitFrontend(mute bool) *Frontend {
-	fe := &Frontend{}
+func initFrontend(mute bool) *frontend {
+	fe := &frontend{}
 	fe.muted = mute
 	fe.keymap = loadKeymap()
 	if !mute {
@@ -42,25 +40,21 @@ func InitFrontend(mute bool) *Frontend {
 	return fe
 }
 
-func (fe *Frontend) Start(name string) {
+func (fe *frontend) start(name string) {
 	rl.SetConfigFlags(rl.FlagWindowResizable)
-	rl.InitWindow(LCDWidth*initialScale, LCDHeight*initialScale, name)
+	rl.InitWindow(gb.ScreenWidth*initialScale, gb.ScreenHeight*initialScale, name)
 
-	img := rl.GenImageColor(int(LCDWidth), int(LCDHeight), rl.Black)
+	img := rl.GenImageColor(int(gb.ScreenWidth), int(gb.ScreenHeight), rl.Black)
 	fe.texture = rl.LoadTextureFromImage(img)
 	rl.UnloadImage(img)
 	rl.PlayAudioStream(fe.stream)
 }
 
-func (fe *Frontend) IsRunning() bool {
-	return !rl.WindowShouldClose()
-}
-
-func (fe *Frontend) Render(pixels *[160][144][3]uint8) {
-	data := make([]byte, LCDWidth*LCDHeight*4)
+func (fe *frontend) Render(pixels *[160][144][3]uint8) {
+	data := make([]byte, gb.ScreenWidth*gb.ScreenHeight*4)
 	i := 0
-	for y := range LCDHeight {
-		for x := range LCDWidth {
+	for y := range gb.ScreenHeight {
+		for x := range gb.ScreenWidth {
 			col := pixels[x][y]
 			data[i], data[i+1], data[i+2], data[i+3] = col[0], col[1], col[2], 0xff
 			i += 4
@@ -71,17 +65,21 @@ func (fe *Frontend) Render(pixels *[160][144][3]uint8) {
 	rl.ClearBackground(rl.Black)
 
 	winWidth, winHeight := float32(rl.GetScreenWidth()), float32(rl.GetScreenHeight())
-	scale := min(winWidth/float32(LCDWidth), winHeight/float32(LCDHeight))
-	destWidth, destHeight := float32(LCDWidth)*scale, float32(LCDHeight)*scale
+	scale := min(winWidth/float32(gb.ScreenWidth), winHeight/float32(gb.ScreenHeight))
+	destWidth, destHeight := float32(gb.ScreenWidth)*scale, float32(gb.ScreenHeight)*scale
 	offsetX, offsetY := (winWidth-destWidth)/2, (winHeight-destHeight)/2
-	src := rl.Rectangle{Width: float32(LCDWidth), Height: float32(LCDHeight)}
+	src := rl.Rectangle{Width: float32(gb.ScreenWidth), Height: float32(gb.ScreenHeight)}
 	dest := rl.Rectangle{X: offsetX, Y: offsetY, Width: destWidth, Height: destHeight}
 	rl.DrawTexturePro(fe.texture, src, dest, rl.Vector2{}, 0, gameboyScreenTint)
 
 	rl.EndDrawing()
 }
 
-func (fe *Frontend) DoInput() byte {
+func (fe *frontend) IsRunning() bool {
+	return !rl.WindowShouldClose()
+}
+
+func (fe *frontend) DoInput() byte {
 	var input byte
 
 	for i, n := range fe.keymap {
@@ -94,7 +92,7 @@ func (fe *Frontend) DoInput() byte {
 }
 
 // this just queues audio from the sample buffer that Gameboy gives us
-func (fe *Frontend) EmitAudio(sampleBuffer []float32) {
+func (fe *frontend) EmitAudio(sampleBuffer []float32) {
 	if fe.muted {
 		return
 	}
@@ -106,7 +104,7 @@ func (fe *Frontend) EmitAudio(sampleBuffer []float32) {
 	}
 }
 
-func (fe *Frontend) ProcessAudio() {
+func (fe *frontend) processAudio() {
 	if fe.muted {
 		return
 	}
@@ -119,7 +117,7 @@ func (fe *Frontend) ProcessAudio() {
 	}
 }
 
-func (fe *Frontend) Close() {
+func (fe *frontend) close() {
 	rl.UnloadAudioStream(fe.stream)
 	rl.CloseAudioDevice()
 	rl.CloseWindow()

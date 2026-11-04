@@ -206,7 +206,7 @@ type SoundChannel1 struct {
 	panRight    bool
 }
 
-func (sc1 *SoundChannel1) Trigger() {
+func (sc1 *SoundChannel1) trigger() {
 	sc1.enabled = sc1.dacEnabled
 	if sc1.length.counter == 0 {
 		sc1.length.counter = SC1LengthMax
@@ -280,7 +280,7 @@ type SoundChannel2 struct {
 	panRight    bool
 }
 
-func (sc2 *SoundChannel2) Trigger() {
+func (sc2 *SoundChannel2) trigger() {
 	sc2.enabled = sc2.dacEnabled
 	if sc2.length.counter == 0 {
 		sc2.length.counter = SC2LengthMax
@@ -324,7 +324,7 @@ type SoundChannel3 struct {
 	waveRAM     [16]byte
 }
 
-func (sc3 *SoundChannel3) Trigger() {
+func (sc3 *SoundChannel3) trigger() {
 	sc3.enabled = sc3.dacEnabled
 	if sc3.length.counter == 0 {
 		sc3.length.counter = SC3LengthMax
@@ -389,7 +389,7 @@ func (sc4 *SoundChannel4) reloadTimer() {
 	sc4.freqTimer += int(noiseDivisors[sc4.clockDivider] << sc4.clockShift)
 }
 
-func (sc4 *SoundChannel4) Trigger() {
+func (sc4 *SoundChannel4) trigger() {
 	sc4.enabled = sc4.dacEnabled
 	if sc4.length.counter == 0 {
 		sc4.length.counter = SC4LengthMax
@@ -447,7 +447,7 @@ type APU struct {
 	rightCapacitor float32
 }
 
-func InitAPU() *APU {
+func initAPU() *APU {
 	apu := &APU{enabled: true}
 
 	apu.sc1 = &SoundChannel1{enabled: true, dacEnabled: true, env: Envelope{}, sweep: Sweep{}}
@@ -458,27 +458,27 @@ func InitAPU() *APU {
 	apu.sampleBuffer = make([]float32, 0)
 
 	// post-boot register values
-	apu.Write(NR10Addr, 0x80)
-	apu.Write(NR11Addr, 0x80)
-	apu.Write(NR12Addr, 0xf3)
-	apu.Write(NR13Addr, 0xc1)
-	apu.Write(NR14Addr, 0x07)
-	apu.Write(NR21Addr, 0x00)
-	apu.Write(NR22Addr, 0x00)
-	apu.Write(NR23Addr, 0x00)
-	apu.Write(NR24Addr, 0x00)
-	apu.Write(NR30Addr, 0x00)
-	apu.Write(NR31Addr, 0x00)
-	apu.Write(NR32Addr, 0x00)
-	apu.Write(NR33Addr, 0x00)
-	apu.Write(NR34Addr, 0x00)
-	apu.Write(NR41Addr, 0x00)
-	apu.Write(NR42Addr, 0x00)
-	apu.Write(NR43Addr, 0x00)
-	apu.Write(NR44Addr, 0x00)
-	apu.Write(NR50Addr, 0x77)
-	apu.Write(NR51Addr, 0xf3)
-	apu.Write(NR52Addr, 0x80)
+	apu.write(NR10Addr, 0x80)
+	apu.write(NR11Addr, 0x80)
+	apu.write(NR12Addr, 0xf3)
+	apu.write(NR13Addr, 0xc1)
+	apu.write(NR14Addr, 0x07)
+	apu.write(NR21Addr, 0x00)
+	apu.write(NR22Addr, 0x00)
+	apu.write(NR23Addr, 0x00)
+	apu.write(NR24Addr, 0x00)
+	apu.write(NR30Addr, 0x00)
+	apu.write(NR31Addr, 0x00)
+	apu.write(NR32Addr, 0x00)
+	apu.write(NR33Addr, 0x00)
+	apu.write(NR34Addr, 0x00)
+	apu.write(NR41Addr, 0x00)
+	apu.write(NR42Addr, 0x00)
+	apu.write(NR43Addr, 0x00)
+	apu.write(NR44Addr, 0x00)
+	apu.write(NR50Addr, 0x77)
+	apu.write(NR51Addr, 0xf3)
+	apu.write(NR52Addr, 0x80)
 
 	return apu
 }
@@ -497,13 +497,13 @@ func (apu *APU) powerOff() {
 		if addr == NR11Addr || addr == NR21Addr || addr == NR31Addr || addr == NR41Addr {
 			continue
 		}
-		apu.Write(addr, 0)
+		apu.write(addr, 0)
 	}
 	apu.sc1.waveDuty = 0
 	apu.sc2.waveDuty = 0
 }
 
-func (apu *APU) Read(addr uint16) byte {
+func (apu *APU) read(addr uint16) byte {
 	var val byte
 	switch {
 	case addr == NR10Addr:
@@ -587,7 +587,7 @@ func (apu *APU) Read(addr uint16) byte {
 	return val | AudioRegisterMasks[addr-0xff10]
 }
 
-func (apu *APU) Write(addr uint16, val byte) {
+func (apu *APU) write(addr uint16, val byte) {
 	// channels are read-only when the APU is disabled
 	if !apu.enabled && addr != NR52Addr && addr < WaveRamBegin {
 		return
@@ -598,7 +598,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 		// if pace == 0, iterations are instantly disabled and will be reloaded when something else
 		// is written
 		sweepPace := (val >> 4) & 0b111
-		sweepDir := bitEnabled(val, 3)
+		sweepDir := isBitSet(val, 3)
 		sweepShift := val & 0b111
 
 		// exiting negate mode after calculation disables channel
@@ -635,9 +635,9 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		sc1Length := &apu.sc1.length
 		wasLengthEnabled := apu.sc1.length.enabled
-		sc1Length.enabled = bitEnabled(val, 6)
+		sc1Length.enabled = isBitSet(val, 6)
 		isLengthPhase := (apu.fsPhase&1 == 0)
-		doTrigger := bitEnabled(val, 7)
+		doTrigger := isBitSet(val, 7)
 
 		// enabling in the first half of length period clocks length
 		if !isLengthPhase && !wasLengthEnabled && sc1Length.enabled && sc1Length.counter > 0 {
@@ -649,7 +649,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		if doTrigger {
 			reloaded := (sc1Length.counter == 0)
-			apu.sc1.Trigger()
+			apu.sc1.trigger()
 			if reloaded && sc1Length.enabled && !isLengthPhase {
 				sc1Length.counter = SC1LengthMax - 1
 			}
@@ -668,7 +668,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc2.enabled = false
 		}
 		apu.sc2.env.pace = val & 0b0111
-		apu.sc2.env.increase = bitEnabled(val, 3)
+		apu.sc2.env.increase = isBitSet(val, 3)
 		apu.sc2.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR23Addr:
 		// channel 2 period low
@@ -680,9 +680,9 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		sc2Length := &apu.sc2.length
 		wasLengthEnabled := apu.sc2.length.enabled
-		sc2Length.enabled = bitEnabled(val, 6)
+		sc2Length.enabled = isBitSet(val, 6)
 		isLengthPhase := (apu.fsPhase&1 == 0)
-		doTrigger := bitEnabled(val, 7)
+		doTrigger := isBitSet(val, 7)
 
 		if !isLengthPhase && !wasLengthEnabled && sc2Length.enabled && sc2Length.counter > 0 {
 			sc2Length.counter--
@@ -693,7 +693,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		if doTrigger {
 			reloaded := (sc2Length.counter == 0)
-			apu.sc2.Trigger()
+			apu.sc2.trigger()
 			if reloaded && sc2Length.enabled && !isLengthPhase {
 				sc2Length.counter = SC2LengthMax - 1
 			}
@@ -701,7 +701,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 	case addr == NR30Addr:
 		// channel 3 DAC enable
 		// this register can only turn off the DAC
-		apu.sc3.dacEnabled = bitEnabled(val, 7)
+		apu.sc3.dacEnabled = isBitSet(val, 7)
 		if !apu.sc3.dacEnabled {
 			apu.sc3.enabled = false
 		}
@@ -721,9 +721,9 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		sc3Length := &apu.sc3.length
 		wasLengthEnabled := apu.sc3.length.enabled
-		sc3Length.enabled = bitEnabled(val, 6)
+		sc3Length.enabled = isBitSet(val, 6)
 		isLengthPhase := (apu.fsPhase&1 == 0)
-		doTrigger := bitEnabled(val, 7)
+		doTrigger := isBitSet(val, 7)
 
 		if !isLengthPhase && !wasLengthEnabled && sc3Length.enabled && sc3Length.counter > 0 {
 			sc3Length.counter--
@@ -734,7 +734,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		if doTrigger {
 			reloaded := (sc3Length.counter == 0)
-			apu.sc3.Trigger()
+			apu.sc3.trigger()
 			if reloaded && sc3Length.enabled && !isLengthPhase {
 				sc3Length.counter = SC3LengthMax - 1
 			}
@@ -750,20 +750,20 @@ func (apu *APU) Write(addr uint16, val byte) {
 			apu.sc4.enabled = false
 		}
 		apu.sc4.env.pace = val & 0b0000_0111
-		apu.sc4.env.increase = bitEnabled(val, 3)
+		apu.sc4.env.increase = isBitSet(val, 3)
 		apu.sc4.env.initVolume = (val & 0b1111_0000) >> 4
 	case addr == NR43Addr:
 		// channel 4 frequency and randomness
 		apu.sc4.clockShift = val >> 4
-		apu.sc4.LFSRWidth = bitEnabled(val, 3)
+		apu.sc4.LFSRWidth = isBitSet(val, 3)
 		apu.sc4.clockDivider = val & 0x07
 	case addr == NR44Addr:
 		// channel 4 control
 		sc4Length := &apu.sc4.length
 		isLengthPhase := (apu.fsPhase&1 == 0)
 		wasLengthEnabled := apu.sc4.length.enabled
-		sc4Length.enabled = bitEnabled(val, 6)
-		doTrigger := bitEnabled(val, 7)
+		sc4Length.enabled = isBitSet(val, 6)
+		doTrigger := isBitSet(val, 7)
 
 		if !isLengthPhase && !wasLengthEnabled && sc4Length.enabled && sc4Length.counter > 0 {
 			sc4Length.counter--
@@ -774,7 +774,7 @@ func (apu *APU) Write(addr uint16, val byte) {
 
 		if doTrigger {
 			reloaded := (sc4Length.counter == 0)
-			apu.sc4.Trigger()
+			apu.sc4.trigger()
 			if reloaded && sc4Length.enabled && !isLengthPhase {
 				sc4Length.counter = SC4LengthMax - 1
 			}
@@ -783,26 +783,26 @@ func (apu *APU) Write(addr uint16, val byte) {
 		// master volume and VIN panning
 		rightVol := val & 0x07
 		leftVol := val & 0x70
-		apu.vinLeft = bitEnabled(val, 7)
-		apu.vinRight = bitEnabled(val, 3)
+		apu.vinLeft = isBitSet(val, 7)
+		apu.vinRight = isBitSet(val, 3)
 		apu.volumeLeft = (leftVol >> 4)
 		apu.volumeRight = rightVol
 	case addr == NR51Addr:
 		// sound panning
-		apu.sc1.panRight = bitEnabled(val, 0)
-		apu.sc1.panLeft = bitEnabled(val, 4)
+		apu.sc1.panRight = isBitSet(val, 0)
+		apu.sc1.panLeft = isBitSet(val, 4)
 
-		apu.sc2.panRight = bitEnabled(val, 1)
-		apu.sc2.panLeft = bitEnabled(val, 5)
+		apu.sc2.panRight = isBitSet(val, 1)
+		apu.sc2.panLeft = isBitSet(val, 5)
 
-		apu.sc3.panRight = bitEnabled(val, 2)
-		apu.sc3.panLeft = bitEnabled(val, 6)
+		apu.sc3.panRight = isBitSet(val, 2)
+		apu.sc3.panLeft = isBitSet(val, 6)
 
-		apu.sc4.panRight = bitEnabled(val, 3)
-		apu.sc4.panLeft = bitEnabled(val, 7)
+		apu.sc4.panRight = isBitSet(val, 3)
+		apu.sc4.panLeft = isBitSet(val, 7)
 	case addr == NR52Addr:
 		// audio master control
-		on := bitEnabled(val, 7)
+		on := isBitSet(val, 7)
 		if !on && apu.enabled {
 			apu.powerOff()
 		} else if on && !apu.enabled {
@@ -848,7 +848,7 @@ func (apu *APU) mixSample() (left float32, right float32) {
 	return left, right
 }
 
-func (apu *APU) Step(cycles uint16) {
+func (apu *APU) step(cycles uint16) {
 	if !apu.enabled {
 		return
 	}

@@ -24,7 +24,7 @@ func main() {
 	// but raylib handles both and it's very awkward to split its global state
 	// between two different types, so Frontend implements both Screen and Speaker
 	// and we hand it to the Gameboy struct for each of them
-	frontend := InitFrontend(*muteMode)
+	frontend := initFrontend(*muteMode)
 	gameboy, err := gb.InitGameboy(romPath, frontend, frontend)
 	if err != nil {
 		log.Fatal(err)
@@ -34,8 +34,8 @@ func main() {
 		gameboy.LogOpcodes = true
 	}
 
-	frontend.Start("yadmg")
-	defer frontend.Close()
+	frontend.start("yadmg")
+	defer frontend.close()
 
 	ticker := time.NewTicker(4 * time.Millisecond)
 	last := time.Now()
@@ -44,7 +44,7 @@ func main() {
 			return
 		}
 
-		frontend.ProcessAudio()
+		frontend.processAudio()
 		cycleBudget := uint64(now.Sub(last)) * gb.CPUSpeedHz / uint64(time.Second)
 		last = now
 		if err := gameboy.Step(cycleBudget); err != nil {
